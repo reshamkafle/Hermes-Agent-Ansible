@@ -76,7 +76,8 @@
     hermes_cmd: "{{ (hermes_bin_candidates_after_install.results | selectattr('stat.exists') | map(attribute='item') | list | first) }}"
   when:
     - hermes_cmd | length == 0
-    - hermes_bin_candidates_after_install.results is defined
+    - hermes_bin_candidates_after_install is defined
+    - not (hermes_bin_candidates_after_install.skipped | default(false))
     - hermes_bin_candidates_after_install.results | selectattr('stat.exists') | list | length > 0
 
 - name: Look up Hermes CLI on PATH after install

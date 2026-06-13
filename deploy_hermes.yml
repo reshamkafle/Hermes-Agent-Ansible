@@ -145,21 +145,8 @@
       when: firecrawl_verify_install | default(true) | bool
 
     # --- Step 4: Map Environment Variable Structure ---
-    - name: Deploy structured Hermes unified config.yaml
-      template:
-        src: "{{ playbook_dir }}/templates/hermes.config.yaml.j2"
-        dest: "{{ target_home }}/.hermes/config.yaml"
-        mode: '0644'
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-
-    - name: Inject application keys into operational environment secrets (.env)
-      template:
-        src: "{{ playbook_dir }}/templates/hermes.env.j2"
-        dest: "{{ target_home }}/.hermes/.env"
-        mode: '0600'
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+    - name: Sync Hermes config, secrets, and runtime wrapper
+      import_tasks: tasks/sync_hermes_config.yml
 
     # --- Step 5: Start Daemon/Background Workers ---
     - name: Configure and mount Linux systemd service worker (Linux / WSL2)
@@ -177,7 +164,7 @@
           Environment=HOME={{ hermes_home }}
           Environment=PATH={{ hermes_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
           WorkingDirectory={{ hermes_home }}/.hermes
-          ExecStart={{ hermes_cmd }} gateway run
+          ExecStart={{ target_home }}/.hermes/bin/hermes-run.sh gateway run
           Restart=always
 
           [Install]
@@ -185,27 +172,6 @@
       when: ansible_facts['os_family'] == 'Debian'
       become: true
 
-    - name: Launch Hermes background environment via systemd (Linux / WSL2)
-      systemd:
-        name: hermes-workspace
-        daemon_reload: yes
-        state: restarted
-        enabled: yes
-      when:
-        - ansible_facts['os_family'] == 'Debian'
-        - hermes_start_agents | default(false) | bool
-      become: true
-      tags:
-        - hermes_agents
-
-    - name: Launch Hermes gateway daemon (macOS via tmux)
-      shell: "tmux kill-session -t hermes_ws || true && tmux new-session -d -s hermes_ws '{{ hermes_cmd }} gateway run'"
-      environment:
-        HOME: "{{ target_home }}"
-        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-      when:
-        - ansible_facts['os_family'] != 'Debian'
-        - hermes_start_agents | default(false) | bool
-      become: false
-      tags:
-        - hermes_agents
+    - name: Start Hermes gateway daemon
+      import_tasks: tasks/start_hermes_gateway.yml
+      when: hermes_start_agents | default(true) | bool

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="{{ target_home }}"
+export PATH="{{ hermes_path_prefix }}:${PATH:-/usr/bin:/bin}"
+if [[ -f "{{ target_home }}/.hermes/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "{{ target_home }}/.hermes/.env"
+  set +a
+fi
+exec "{{ hermes_cmd }}" "$@"

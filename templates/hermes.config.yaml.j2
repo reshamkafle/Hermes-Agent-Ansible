@@ -1,7 +1,8 @@
-model: "ollama/{{ ollama_model }}"
-providers:
-  ollama:
-    api_base: "{{ ollama_base_url }}"
+model:
+  default: "{{ ollama_model }}"
+  provider: "{{ hermes_model_provider }}"
+  base_url: "{{ ollama_base_url }}"
+  api_key: "{{ hermes_model_api_key }}"
 gateway:
   enabled: true
   platform: "telegram"

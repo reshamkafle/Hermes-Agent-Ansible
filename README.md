@@ -33,13 +33,37 @@ chmod +x deploy_local.sh && ./deploy_local.sh
 chmod +x deploy_all.sh && ./deploy_all.sh
 ```
 
-5. **Start gateway** (optional — off by default):
-
-```bash
-START_HERMES_AGENTS=1 ./deploy_local.sh   # or deploy_all.sh
-```
+The gateway starts automatically after deploy (controlled by `hermes_start_agents` in `vars.yml`, default `true`).
 
 On macOS, attach to the gateway: `tmux attach -t hermes_ws`
+
+To skip the gateway during deploy: set `hermes_start_agents: false` in `vars.yml`, or `START_HERMES_AGENTS=0 ./deploy_local.sh`
+
+## Start gateway only
+
+If you already deployed and only need the gateway (or it stopped and you want to restart it):
+
+```bash
+chmod +x start_gateway.sh && ./start_gateway.sh
+```
+
+Then check it:
+
+```bash
+# macOS — attach to the running gateway
+tmux attach -t hermes_ws
+
+# Linux / WSL2 — check the systemd service
+systemctl status hermes-workspace
+```
+
+Remote host:
+
+```bash
+INVENTORY=inventory.ini ./start_gateway.sh
+# then SSH in and attach (macOS) or check systemctl (Linux)
+```
+
 
 ## Playbooks
 
@@ -114,8 +138,11 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 
 | Variable | Purpose |
 |----------|---------|
-| `hermes_start_agents` | Start gateway after deploy (default `false`; use `START_HERMES_AGENTS=1` to override) |
-| `ollama_model` | LLM to pull via Ollama |
+| `hermes_start_agents` | Start gateway after deploy (default `true`; set `false` or `START_HERMES_AGENTS=0` to skip) |
+| `ollama_model` | LLM to pull via Ollama (also `model.default` in `config.yaml`) |
+| `ollama_base_url` | Ollama OpenAI-compatible API URL (also `model.base_url`) |
+| `hermes_model_provider` | Hermes provider for local Ollama (default `custom`) |
+| `hermes_model_api_key` | API key for `model.provider` (empty for local Ollama) |
 | `tracked_stocks` | Tickers for investment skill |
 | `firecrawl_init_all` / `firecrawl_verify_install` | Firecrawl setup in `~/.hermes/workspace` |
 
@@ -125,16 +152,18 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 
 | Problem | Fix |
 |---------|-----|
+| `tmux attach -t hermes_ws` — no sessions | Run `./start_gateway.sh`, or redeploy with `hermes_start_agents: true` in `vars.yml` |
 | Hermes CLI not found | Run `deploy_hermes.yml` first; check `~/.local/bin/hermes` |
 | Skill playbook fails | Core deploy must run first — use `deploy_local.sh` / `deploy_all.sh` |
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
-| Digest smoke test fails | Check `ollama list`, `~/.hermes/skills/daily_digest.md`, logs in `~/.hermes/logs/` |
+| Digest smoke test fails | Ensure Ollama is running (`ollama list`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for Ollama. Check `~/.hermes/skills/daily_digest.md` and logs in `~/.hermes/logs/` |
+| `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For local Ollama, `model.provider` must be `custom` with `base_url: http://127.0.0.1:11434/v1` |
 | macOS job not firing | `launchctl list \| grep hermes` · reload plist after re-deploy |
 
 ## Project layout
 
 ```
 deploy_hermes.yml          deploy_investment.yml    deploy_news.yml    deploy_digest.yml
-deploy_local.sh            deploy_all.sh            test_telegram.sh   test_hermes_daily_digest.sh
-tasks/resolve_hermes_cmd.yml    templates/*.j2    vars.yml (from vars.example..yml)
+deploy_local.sh            deploy_all.sh            start_gateway.sh   start_gateway.yml   test_telegram.sh   test_hermes_daily_digest.sh
+tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    templates/*.j2    vars.yml (from vars.example..yml)
 ```

@@ -6,7 +6,10 @@ hermes_user: "hermes"
 hermes_home: "/home/hermes"
 ollama_model: "gemma4:e2b-mlx"
 ollama_base_url: "http://127.0.0.1:11434/v1"
-hermes_start_agents: false
+# Hermes model routing (~/.hermes/config.yaml). Local Ollama uses provider "custom".
+hermes_model_provider: "custom"
+hermes_model_api_key: ""
+hermes_start_agents: true
 
 # --- Firecrawl behavior ---
 firecrawl_init_all: true

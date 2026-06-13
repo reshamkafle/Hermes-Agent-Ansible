@@ -1,0 +1,36 @@
+---
+# Deploy Hermes config.yaml, .env secrets, and hermes-run.sh wrapper.
+# Requires: target_home, hermes_cmd, hermes_path_prefix
+# Optional: target_user (for Debian become)
+
+- name: Deploy structured Hermes unified config.yaml
+  template:
+    src: "{{ playbook_dir }}/templates/hermes.config.yaml.j2"
+    dest: "{{ target_home }}/.hermes/config.yaml"
+    mode: "0644"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Inject application keys into operational environment secrets (.env)
+  template:
+    src: "{{ playbook_dir }}/templates/hermes.env.j2"
+    dest: "{{ target_home }}/.hermes/.env"
+    mode: "0600"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Ensure Hermes runtime helper directory exists
+  file:
+    path: "{{ target_home }}/.hermes/bin"
+    state: directory
+    mode: "0755"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Deploy Hermes runtime wrapper (sources .env before CLI commands)
+  template:
+    src: "{{ playbook_dir }}/templates/hermes_run.sh.j2"
+    dest: "{{ target_home }}/.hermes/bin/hermes-run.sh"
+    mode: "0755"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"

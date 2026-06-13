@@ -59,11 +59,38 @@
           {{ target_home }}/.hermes/skills/daily_digest.md.
           Run deploy_digest.yml or ./deploy_local.sh.
 
-    - name: Sync Hermes environment from vars.yml
-      template:
-        src: templates/hermes.env.j2
-        dest: "{{ target_home }}/.hermes/.env"
-        mode: "0600"
+    - name: Sync Hermes config, secrets, and runtime wrapper from vars.yml
+      import_tasks: tasks/sync_hermes_config.yml
+
+    - name: Check Hermes model config exists
+      stat:
+        path: "{{ target_home }}/.hermes/config.yaml"
+      register: hermes_config_stat
+
+    - name: Require Hermes model provider config
+      assert:
+        that:
+          - hermes_config_stat.stat.exists
+          - hermes_config_stat.stat.size | int > 0
+        fail_msg: >-
+          {{ target_home }}/.hermes/config.yaml is missing or empty. Run
+          deploy_hermes.yml or ./deploy_local.sh to deploy the Ollama provider config.
+
+    - name: Verify Ollama endpoint is reachable
+      uri:
+        url: "{{ ollama_base_url | regex_replace('/v1/?$', '') }}/api/tags"
+        method: GET
+        status_code: 200
+      register: ollama_health
+      failed_when: false
+
+    - name: Require Ollama to be running for digest smoke test
+      assert:
+        that:
+          - ollama_health.status == 200
+        fail_msg: >-
+          Ollama is not reachable at {{ ollama_base_url }}. Start Ollama and run
+          `ollama pull {{ ollama_model }}` before the smoke test.
 
     - name: Ensure digest output directory exists
       file:
@@ -73,14 +100,7 @@
 
     - name: Run Hermes daily morning digest skill (same command as 6 AM scheduler)
       shell: |
-        set -euo pipefail
-        export HOME="{{ target_home }}"
-        export PATH="{{ hermes_path_prefix }}:${PATH}"
-        set -a
-        # shellcheck disable=SC1091
-        source "{{ target_home }}/.hermes/.env"
-        set +a
-        exec "{{ hermes_cmd }}" chat -Q -q 'Run the daily-morning-digest skill according to its instructions.' --skills daily-morning-digest --yolo
+        exec "{{ target_home }}/.hermes/bin/hermes-run.sh" chat -Q -q 'Run the daily-morning-digest skill according to its instructions.' --skills daily-morning-digest --yolo
       args:
         executable: /bin/bash
       register: hermes_digest_run
@@ -93,7 +113,8 @@
           - hermes_digest_run.rc == 0
         fail_msg: >-
           Hermes daily-morning-digest failed (rc={{ hermes_digest_run.rc }}).
-          Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
+          Ensure ~/.hermes/config.yaml defines model.provider/model.base_url for Ollama
+          and Ollama is running. Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
 
     - name: Verify combined digest HTML was generated
       stat:

@@ -6,7 +6,7 @@
 # Usage:
 #   ./deploy_all.sh
 #   INVENTORY=hosts.ini ./deploy_all.sh
-#   START_HERMES_AGENTS=1 ./deploy_all.sh   # also start the Hermes gateway (default: off)
+#   START_HERMES_AGENTS=0 ./deploy_all.sh   # skip starting the Hermes gateway
 #
 # Prerequisites:
 #   - ansible-playbook installed on this control machine
@@ -20,7 +20,7 @@ cd "$SCRIPT_DIR"
 
 INVENTORY="${INVENTORY:-inventory.ini}"
 LOCALHOST_PATTERN='localhost|127\.0\.0\.1'
-START_HERMES_AGENTS="${START_HERMES_AGENTS:-0}"
+START_HERMES_AGENTS="$("$SCRIPT_DIR/scripts/read_hermes_start_agents.sh" vars.yml)"
 
 EXTRA_PLAYBOOK_ARGS=()
 if [[ "$START_HERMES_AGENTS" == "1" ]]; then
@@ -69,7 +69,7 @@ fi
 
 echo "==> Remote hosts:"
 echo "$REMOTE_HOSTS" | sed 's/^/    /'
-echo "==> Hermes gateway after deploy: $([[ "$START_HERMES_AGENTS" == "1" ]] && echo 'start' || echo 'skip (set START_HERMES_AGENTS=1 to start)')"
+echo "==> Hermes gateway after deploy: $([[ "$START_HERMES_AGENTS" == "1" ]] && echo 'start' || echo 'skip (set hermes_start_agents: true in vars.yml or run ./start_gateway.sh)')"
 echo
 
 for playbook in "${PLAYBOOKS[@]}"; do

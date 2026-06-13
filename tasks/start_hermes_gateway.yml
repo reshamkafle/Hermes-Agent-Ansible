@@ -1,0 +1,65 @@
+---
+# Start the Hermes gateway daemon on macOS (tmux) or Linux (systemd).
+# Requires: hermes_cmd, target_home, hermes_path_prefix, target_user (Linux)
+
+- name: Launch Hermes background environment via systemd (Linux / WSL2)
+  systemd:
+    name: hermes-workspace
+    daemon_reload: yes
+    state: restarted
+    enabled: yes
+  when: ansible_facts['os_family'] == 'Debian'
+  become: true
+  tags:
+    - hermes_agents
+
+- name: Resolve tmux binary (macOS)
+  shell: command -v tmux
+  args:
+    executable: /bin/bash
+  environment:
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+  register: tmux_lookup
+  changed_when: false
+  failed_when: tmux_lookup.rc != 0 or tmux_lookup.stdout | trim | length == 0
+  when: ansible_facts['os_family'] != 'Debian'
+  tags:
+    - hermes_agents
+
+- name: Stop existing Hermes tmux session (macOS)
+  shell: "{{ tmux_lookup.stdout | trim }} kill-session -t hermes_ws"
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+  register: tmux_kill
+  changed_when: tmux_kill.rc == 0
+  failed_when: false
+  when: ansible_facts['os_family'] != 'Debian'
+  tags:
+    - hermes_agents
+
+- name: Launch Hermes gateway in tmux session (macOS)
+  shell: >-
+    {{ tmux_lookup.stdout | trim }} new-session -d -s hermes_ws
+    "{{ target_home }}/.hermes/bin/hermes-run.sh" gateway run
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+  when: ansible_facts['os_family'] != 'Debian'
+  tags:
+    - hermes_agents
+
+- name: Verify Hermes tmux session is running (macOS)
+  shell: "{{ tmux_lookup.stdout | trim }} has-session -t hermes_ws"
+  args:
+    executable: /bin/bash
+  register: tmux_verify
+  changed_when: false
+  failed_when: tmux_verify.rc != 0
+  when: ansible_facts['os_family'] != 'Debian'
+  tags:
+    - hermes_agents

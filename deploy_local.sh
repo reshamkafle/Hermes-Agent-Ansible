@@ -5,7 +5,7 @@
 #
 # Usage:
 #   ./deploy_local.sh
-#   START_HERMES_AGENTS=1 ./deploy_local.sh   # also start the Hermes gateway (default: off)
+#   START_HERMES_AGENTS=0 ./deploy_local.sh   # skip starting the Hermes gateway
 #
 # Prerequisites:
 #   - ansible-playbook installed on this machine
@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 INVENTORY="localhost,"
-START_HERMES_AGENTS="${START_HERMES_AGENTS:-0}"
+START_HERMES_AGENTS="$("$SCRIPT_DIR/scripts/read_hermes_start_agents.sh" vars.yml)"
 
 EXTRA_PLAYBOOK_ARGS=(
   -i "$INVENTORY"
@@ -53,7 +53,7 @@ if ! command -v ansible-playbook >/dev/null 2>&1; then
 fi
 
 echo "==> Deploying to localhost (this machine)"
-echo "==> Hermes gateway after deploy: $([[ "$START_HERMES_AGENTS" == "1" ]] && echo 'start' || echo 'skip (set START_HERMES_AGENTS=1 to start)')"
+echo "==> Hermes gateway after deploy: $([[ "$START_HERMES_AGENTS" == "1" ]] && echo 'start' || echo 'skip (set hermes_start_agents: true in vars.yml or run ./start_gateway.sh)')"
 echo
 
 for playbook in "${PLAYBOOKS[@]}"; do
