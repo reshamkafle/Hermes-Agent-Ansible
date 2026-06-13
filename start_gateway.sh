@@ -6,7 +6,7 @@
 #   ./start_gateway.sh              # localhost
 #   INVENTORY=inventory.ini ./start_gateway.sh   # remote host(s)
 #
-# macOS: attach with  tmux attach -t hermes_ws
+# macOS: check with  launchctl print gui/$(id -u)/com.hermes.gateway
 # Linux: check with   systemctl status hermes-workspace
 
 set -euo pipefail
@@ -45,8 +45,9 @@ ansible-playbook "${EXTRA_ARGS[@]}"
 
 echo
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  echo "==> Gateway running in tmux session 'hermes_ws'"
-  echo "    Attach: tmux attach -t hermes_ws"
+  echo "==> Gateway running as LaunchAgent 'com.hermes.gateway'"
+  echo "    Check: launchctl print gui/\$(id -u)/com.hermes.gateway"
+  echo "    Logs:  tail -f ~/.hermes/logs/gateway.stderr.log"
 else
   echo "==> Gateway running as systemd service 'hermes-workspace'"
   echo "    Status: systemctl status hermes-workspace"

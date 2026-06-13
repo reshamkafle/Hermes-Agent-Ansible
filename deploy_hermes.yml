@@ -24,7 +24,7 @@
     # --- System Package Management ---
     - name: Install required baseline dependencies (Linux / WSL2)
       apt:
-        name: [curl, git, python3-pip, python3-venv, nodejs, npm, tmux]
+        name: [curl, git, python3-pip, python3-venv, nodejs, npm]
         state: present
         update_cache: yes
       when: ansible_facts['os_family'] == 'Debian'
@@ -32,7 +32,7 @@
 
     - name: Install required baseline dependencies (macOS via Homebrew)
       homebrew:
-        name: [curl, git, python, node, tmux]
+        name: [curl, git, python, node]
         state: present
       when: ansible_facts['os_family'] != 'Debian'
       become: false

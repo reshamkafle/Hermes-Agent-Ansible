@@ -3,34 +3,61 @@
   hosts: localhost
   connection: local
   gather_facts: true
-  vars_files:
-    - vars.yml
 
   tasks:
+    - name: Require vars.yml beside this playbook
+      stat:
+        path: "{{ playbook_dir }}/vars.yml"
+      register: hermes_vars_file
+
+    - name: Fail when vars.yml is missing
+      fail:
+        msg: >-
+          {{ playbook_dir }}/vars.yml not found. Copy vars.example..yml to
+          vars.yml and fill in telegram_bot_token, firecrawl_api_key, and
+          Telegram recipient IDs.
+      when: not hermes_vars_file.stat.exists
+
+    - name: Load deployment variables from vars.yml
+      include_vars:
+        file: "{{ playbook_dir }}/vars.yml"
+
     - name: Establish workspace path variables
       set_fact:
         target_home: "{{ ansible_facts['env']['HOME'] | default(lookup('env', 'HOME')) }}"
         target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
 
-    - name: Resolve Hermes CLI path (no install)
-      import_tasks: tasks/resolve_hermes_cmd.yml
-      vars:
-        hermes_install_if_missing: false
-
     - name: Validate credentials required for digest skills
-      assert:
-        that:
-          - telegram_bot_token | trim | length > 0
-          - firecrawl_api_key | trim | length > 0
-          - >-
+      vars:
+        hermes_telegram_recipient_ids: >-
+          {{
             (
               (telegram_send_users | default([]))
               + (telegram_allowed_users | default([]))
               + ([telegram_chat_id] if (telegram_chat_id | default('') | trim | length > 0) else [])
-            ) | map('trim') | select('ne', '') | list | length > 0
+            ) | map('string') | map('trim') | select('ne', '') | list
+          }}
+      assert:
+        that:
+          - telegram_bot_token | default('') | trim | length > 0
+          - firecrawl_api_key | default('') | trim | length > 0
+          - hermes_telegram_recipient_ids | length > 0
         fail_msg: >-
-          Configure telegram_bot_token, firecrawl_api_key, and at least one
-          Telegram recipient in vars.yml before running this smoke test.
+          Missing required values in {{ playbook_dir }}/vars.yml:
+          {% if telegram_bot_token | default('') | trim | length == 0 %}
+          telegram_bot_token is empty.
+          {% endif %}
+          {% if firecrawl_api_key | default('') | trim | length == 0 %}
+          firecrawl_api_key is empty.
+          {% endif %}
+          {% if hermes_telegram_recipient_ids | length == 0 %}
+          No Telegram recipients (set telegram_chat_id and/or telegram_allowed_users).
+          {% endif %}
+
+    - name: Resolve Hermes CLI path (no install)
+      import_tasks: tasks/resolve_hermes_cmd.yml
+      vars:
+        hermes_install_if_missing: false
 
     - name: Check Hermes home directory exists
       stat:

@@ -10,7 +10,7 @@
 # Prerequisites:
 #   - ansible-playbook installed on this machine
 #   - vars.yml configured (copy from vars.example..yml)
-#   - macOS: Homebrew installed (playbooks install Ollama, git, node, tmux via brew)
+#   - macOS: Homebrew installed (playbooks install Ollama, git, node via brew)
 #
 # For remote hosts, use deploy_all.sh instead.
 
@@ -75,7 +75,8 @@ if [[ "$START_HERMES_AGENTS" == "1" ]]; then
   echo
   echo "==> Hermes gateway started."
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "    Attach to the tmux session: tmux attach -t hermes_ws"
+    echo "    Check gateway: launchctl print gui/\$(id -u)/com.hermes.gateway"
+    echo "    Gateway logs: tail -f ~/.hermes/logs/gateway.stderr.log"
   else
     echo "    Check status: systemctl status hermes-workspace"
   fi

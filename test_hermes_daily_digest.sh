@@ -42,4 +42,5 @@ ansible-playbook smoke_test_hermes_daily_digest.yml \
   -i 'localhost,' \
   -c local \
   -e ansible_become=false \
+  -e "@${SCRIPT_DIR}/vars.yml" \
   -e "smoke_test_timeout_seconds=${SMOKE_TEST_TIMEOUT}"

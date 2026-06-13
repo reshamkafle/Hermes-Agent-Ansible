@@ -1,5 +1,5 @@
 ---
-# Start the Hermes gateway daemon on macOS (tmux) or Linux (systemd).
+# Start the Hermes gateway daemon on macOS (LaunchAgent) or Linux (systemd).
 # Requires: hermes_cmd, target_home, hermes_path_prefix, target_user (Linux)
 
 - name: Launch Hermes background environment via systemd (Linux / WSL2)
@@ -13,53 +13,102 @@
   tags:
     - hermes_agents
 
-- name: Resolve tmux binary (macOS)
-  shell: command -v tmux
-  args:
-    executable: /bin/bash
-  environment:
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-  register: tmux_lookup
-  changed_when: false
-  failed_when: tmux_lookup.rc != 0 or tmux_lookup.stdout | trim | length == 0
-  when: ansible_facts['os_family'] != 'Debian'
+- name: Ensure Hermes log directory exists (macOS)
+  file:
+    path: "{{ target_home }}/.hermes/logs"
+    state: directory
+    mode: '0755'
+  when: ansible_facts['os_family'] == 'Darwin'
   tags:
     - hermes_agents
 
-- name: Stop existing Hermes tmux session (macOS)
-  shell: "{{ tmux_lookup.stdout | trim }} kill-session -t hermes_ws"
+- name: Ensure LaunchAgents directory exists (macOS)
+  file:
+    path: "{{ target_home }}/Library/LaunchAgents"
+    state: directory
+    mode: '0755'
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags:
+    - hermes_agents
+
+- name: Deploy Hermes gateway LaunchAgent (macOS)
+  template:
+    src: "{{ playbook_dir }}/templates/com.hermes.gateway.plist.j2"
+    dest: "{{ target_home }}/Library/LaunchAgents/com.hermes.gateway.plist"
+    mode: '0644'
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags:
+    - hermes_agents
+
+- name: Stop existing Hermes gateway LaunchAgent (macOS)
+  shell: |
+    set -euo pipefail
+    DOMAIN="gui/$(id -u)"
+    LABEL="com.hermes.gateway"
+    PLIST="{{ target_home }}/Library/LaunchAgents/com.hermes.gateway.plist"
+    TARGET="${DOMAIN}/${LABEL}"
+
+    launchctl bootout "${TARGET}" 2>/dev/null || \
+    launchctl bootout "${DOMAIN}" "${PLIST}" 2>/dev/null || \
+    launchctl unload -w "${PLIST}" 2>/dev/null || true
+
+    for _ in $(seq 1 15); do
+      pgrep -f "[h]ermes.*gateway run" >/dev/null || break
+      sleep 1
+    done
+    pkill -f "[h]ermes.*gateway run" 2>/dev/null || true
+    sleep 1
   args:
     executable: /bin/bash
   environment:
     HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-  register: tmux_kill
-  changed_when: tmux_kill.rc == 0
+  register: gateway_stop
+  changed_when: false
   failed_when: false
-  when: ansible_facts['os_family'] != 'Debian'
+  when: ansible_facts['os_family'] == 'Darwin'
   tags:
     - hermes_agents
 
-- name: Launch Hermes gateway in tmux session (macOS)
-  shell: >-
-    {{ tmux_lookup.stdout | trim }} new-session -d -s hermes_ws
-    "{{ target_home }}/.hermes/bin/hermes-run.sh" gateway run
+- name: Start Hermes gateway via LaunchAgent (macOS)
+  shell: |
+    set -euo pipefail
+    DOMAIN="gui/$(id -u)"
+    LABEL="com.hermes.gateway"
+    PLIST="{{ target_home }}/Library/LaunchAgents/com.hermes.gateway.plist"
+    TARGET="${DOMAIN}/${LABEL}"
+
+    if launchctl bootstrap "${DOMAIN}" "${PLIST}" 2>/dev/null; then
+      exit 0
+    fi
+
+    if launchctl print "${TARGET}" >/dev/null 2>&1; then
+      launchctl kickstart -k "${TARGET}"
+      exit 0
+    fi
+
+    launchctl load -w "${PLIST}"
   args:
     executable: /bin/bash
   environment:
     HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-  when: ansible_facts['os_family'] != 'Debian'
+  register: gateway_start
+  changed_when: gateway_start.rc == 0
+  failed_when: gateway_start.rc != 0
+  when: ansible_facts['os_family'] == 'Darwin'
   tags:
     - hermes_agents
 
-- name: Verify Hermes tmux session is running (macOS)
-  shell: "{{ tmux_lookup.stdout | trim }} has-session -t hermes_ws"
+- name: Verify Hermes gateway LaunchAgent is loaded (macOS)
+  shell: launchctl print "gui/$(id -u)/com.hermes.gateway" >/dev/null 2>&1
   args:
     executable: /bin/bash
-  register: tmux_verify
+  environment:
+    HOME: "{{ target_home }}"
+  register: gateway_verify
   changed_when: false
-  failed_when: tmux_verify.rc != 0
-  when: ansible_facts['os_family'] != 'Debian'
+  retries: 5
+  delay: 2
+  until: gateway_verify.rc == 0
+  when: ansible_facts['os_family'] == 'Darwin'
   tags:
     - hermes_agents

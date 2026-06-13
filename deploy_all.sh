@@ -93,5 +93,5 @@ if [[ "$START_HERMES_AGENTS" == "1" ]]; then
   echo
   echo "==> Hermes gateway started on remote host(s)."
   echo "    Linux: ssh to the host and run: systemctl status hermes-workspace"
-  echo "    macOS: ssh to the host and run: tmux attach -t hermes_ws"
+  echo "    macOS: ssh to the host and run: launchctl print gui/\$(id -u)/com.hermes.gateway"
 fi

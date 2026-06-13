@@ -35,7 +35,7 @@ chmod +x deploy_all.sh && ./deploy_all.sh
 
 The gateway starts automatically after deploy (controlled by `hermes_start_agents` in `vars.yml`, default `true`).
 
-On macOS, attach to the gateway: `tmux attach -t hermes_ws`
+On macOS, check the gateway: `launchctl print gui/$(id -u)/com.hermes.gateway`
 
 To skip the gateway during deploy: set `hermes_start_agents: false` in `vars.yml`, or `START_HERMES_AGENTS=0 ./deploy_local.sh`
 
@@ -50,8 +50,9 @@ chmod +x start_gateway.sh && ./start_gateway.sh
 Then check it:
 
 ```bash
-# macOS — attach to the running gateway
-tmux attach -t hermes_ws
+# macOS — LaunchAgent (auto-restarts on failure)
+launchctl print gui/$(id -u)/com.hermes.gateway
+tail -f ~/.hermes/logs/gateway.stderr.log
 
 # Linux / WSL2 — check the systemd service
 systemctl status hermes-workspace
@@ -61,7 +62,7 @@ Remote host:
 
 ```bash
 INVENTORY=inventory.ini ./start_gateway.sh
-# then SSH in and attach (macOS) or check systemctl (Linux)
+# then SSH in and check launchctl (macOS) or systemctl (Linux)
 ```
 
 
@@ -93,6 +94,7 @@ Run `deploy_hermes.yml` first — skill playbooks expect `~/.hermes/` to exist.
 | User / home | `hermes` → `/home/hermes` | Your login user → `~/` |
 | Config & skills | `/home/hermes/.hermes/` | `~/.hermes/` |
 | Scheduler | cron | LaunchAgents in `~/Library/LaunchAgents/` |
+| Gateway | systemd (`hermes-workspace`) | LaunchAgent (`com.hermes.gateway`) |
 
 Playbooks auto-find the Hermes CLI (`~/.local/bin/hermes`, Homebrew paths, or PATH). Only `deploy_hermes.yml` installs Hermes if missing.
 
@@ -104,7 +106,7 @@ Playbooks auto-find the Hermes CLI (`~/.local/bin/hermes`, Homebrew paths, or PA
 | Tech news | 5 AM | `com.hermes.technews.plist` |
 | Daily digest | 6 AM | `com.hermes.dailydigest.plist` |
 
-Logs: `~/.hermes/logs/` · Linux gateway: `systemctl status hermes-workspace`
+Logs: `~/.hermes/logs/` · macOS gateway: `launchctl print gui/$(id -u)/com.hermes.gateway` · Linux gateway: `systemctl status hermes-workspace`
 
 ## Smoke tests
 
@@ -152,7 +154,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 
 | Problem | Fix |
 |---------|-----|
-| `tmux attach -t hermes_ws` — no sessions | Run `./start_gateway.sh`, or redeploy with `hermes_start_agents: true` in `vars.yml` |
+| Gateway not running (macOS) | Ensure `~/.hermes/logs/` exists · check `launchctl print gui/$(id -u)/com.hermes.gateway` · logs: `~/.hermes/logs/gateway.stderr.log` · restart: `./start_gateway.sh` |
 | Hermes CLI not found | Run `deploy_hermes.yml` first; check `~/.local/bin/hermes` |
 | Skill playbook fails | Core deploy must run first — use `deploy_local.sh` / `deploy_all.sh` |
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
