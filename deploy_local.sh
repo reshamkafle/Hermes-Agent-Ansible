@@ -5,7 +5,7 @@
 #
 # Usage:
 #   ./deploy_local.sh
-#   START_HERMES_AGENTS=1 ./deploy_local.sh   # also start workspace daemons (default: off)
+#   START_HERMES_AGENTS=1 ./deploy_local.sh   # also start the Hermes gateway (default: off)
 #
 # Prerequisites:
 #   - ansible-playbook installed on this machine
@@ -28,7 +28,9 @@ EXTRA_PLAYBOOK_ARGS=(
   -e ansible_become=false
 )
 
-if [[ "$START_HERMES_AGENTS" != "1" ]]; then
+if [[ "$START_HERMES_AGENTS" == "1" ]]; then
+  EXTRA_PLAYBOOK_ARGS+=(-e hermes_start_agents=true)
+else
   EXTRA_PLAYBOOK_ARGS+=(--skip-tags hermes_agents)
   EXTRA_PLAYBOOK_ARGS+=(-e hermes_start_agents=false)
 fi
@@ -51,7 +53,7 @@ if ! command -v ansible-playbook >/dev/null 2>&1; then
 fi
 
 echo "==> Deploying to localhost (this machine)"
-echo "==> Hermes agents after deploy: $([[ "$START_HERMES_AGENTS" == "1" ]] && echo 'start' || echo 'skip (set START_HERMES_AGENTS=1 to start)')"
+echo "==> Hermes gateway after deploy: $([[ "$START_HERMES_AGENTS" == "1" ]] && echo 'start' || echo 'skip (set START_HERMES_AGENTS=1 to start)')"
 echo
 
 for playbook in "${PLAYBOOKS[@]}"; do
@@ -68,3 +70,13 @@ for playbook in "${PLAYBOOKS[@]}"; do
 done
 
 echo "==> All playbooks completed successfully on localhost."
+
+if [[ "$START_HERMES_AGENTS" == "1" ]]; then
+  echo
+  echo "==> Hermes gateway started."
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "    Attach to the tmux session: tmux attach -t hermes_ws"
+  else
+    echo "    Check status: systemctl status hermes-workspace"
+  fi
+fi

@@ -6,12 +6,12 @@ Ansible playbooks to deploy [Hermes Agent](https://github.com/NousResearch/herme
 
 | Playbook | Purpose |
 |----------|---------|
-| `deploy_hermes.yml` | Core install: Ollama, Hermes CLI, workspace, config, and `.env` |
+| `deploy_hermes.yml` | Core install: Ollama, Hermes CLI, home dirs, config, and `.env` |
 | `deploy_investment.yml` | Midnight stock watchlist reports |
 | `deploy_news.yml` | 5 AM IT/AI news digest |
 | `deploy_digest.yml` | 6 AM combined Bootstrap HTML briefing via Telegram |
 
-Playbooks run in that order when you use `deploy_local.sh` or `deploy_all.sh`. Run `deploy_hermes.yml` first — the skill playbooks expect the Hermes workspace to already exist.
+Playbooks run in that order when you use `deploy_local.sh` or `deploy_all.sh`. Run `deploy_hermes.yml` first — the skill playbooks expect `~/.hermes/` to already exist.
 
 ## Project layout
 
@@ -76,6 +76,8 @@ Replace the example host with your server IP or hostname and SSH user. Do **not*
 | `hermes_user` | Used (`hermes` system user) | Ignored — uses your login user |
 | `hermes_home` | Used (`/home/hermes`) | Ignored — uses `~/` |
 | Hermes config | `/home/hermes/.hermes/` | `~/.hermes/` |
+| Skills | `/home/hermes/.hermes/skills/` | `~/.hermes/skills/` |
+| Skill data / reports | `/home/hermes/.hermes/workspace/` | `~/.hermes/workspace/` |
 | Scheduler | cron | LaunchAgents in `~/Library/LaunchAgents/` |
 
 On macOS, the Hermes installer typically places the CLI at `~/.local/bin/hermes`, which is not always on your shell PATH. All playbooks resolve the binary automatically — you do not need to add it to PATH manually.
@@ -89,13 +91,25 @@ Every playbook uses `tasks/resolve_hermes_cmd.yml` to find the Hermes binary bef
 3. `/usr/local/bin/hermes` (Intel Mac / Linux)
 4. `command -v hermes` with an expanded PATH
 
-Only `deploy_hermes.yml` installs Hermes if none of those locations have the binary. The skill playbooks (`deploy_investment.yml`, `deploy_news.yml`, `deploy_digest.yml`) look up the path but do not install — run the core playbook first.
+Only `deploy_hermes.yml` installs Hermes if none of those locations have the binary (via `https://hermes-agent.nousresearch.com/install.sh`). The skill playbooks (`deploy_investment.yml`, `deploy_news.yml`, `deploy_digest.yml`) look up the path but do not install — run the core playbook first.
 
 Resolved paths are used for:
 
-- `hermes workspace init` / `sync` / `start`
+- `hermes postinstall` (bootstrap after install)
+- `hermes gateway run` (background messaging daemon)
+- `hermes chat --skills …` (scheduled skill runs)
 - Linux cron jobs
 - macOS LaunchAgent plists (`com.hermes.*.plist`)
+
+### Hermes CLI commands used by these playbooks
+
+| Task | Command |
+|------|---------|
+| Bootstrap home dirs | Ansible creates `~/.hermes/{skills,workspace,logs}` |
+| Post-install deps | `hermes postinstall` |
+| Start gateway (Linux) | `hermes gateway run` via `hermes-workspace.service` |
+| Start gateway (macOS) | `hermes gateway run` in tmux session `hermes_ws` |
+| Run a scheduled skill | `hermes chat -Q -q 'Run the … skill according to its instructions.' --skills <name> --yolo` |
 
 ## Telegram smoke test
 
@@ -114,20 +128,22 @@ Set `telegram_bot_token` and at least one of `telegram_chat_id` or `telegram_all
 
 ### Local (this machine)
 
-Deploy all playbooks to localhost (agents stay stopped by default):
+Deploy all playbooks to localhost (gateway stays stopped by default):
 
 ```bash
 chmod +x deploy_local.sh
 ./deploy_local.sh
 ```
 
-To also start the Hermes workspace daemon after deploy:
+To also start the Hermes gateway after deploy:
 
 ```bash
 START_HERMES_AGENTS=1 ./deploy_local.sh
 ```
 
-On macOS, the workspace daemon runs in a tmux session named `hermes_ws`. Attach with:
+This passes `-e hermes_start_agents=true` to the playbooks (overriding the default in `vars.yml`).
+
+On macOS, the gateway runs in a tmux session named `hermes_ws`. Attach with:
 
 ```bash
 tmux attach -t hermes_ws
@@ -135,7 +151,7 @@ tmux attach -t hermes_ws
 
 ### Remote (SSH)
 
-Deploy all playbooks to hosts in `inventory.ini` (agents stay stopped by default):
+Deploy all playbooks to hosts in `inventory.ini` (gateway stays stopped by default):
 
 ```bash
 chmod +x deploy_all.sh
@@ -148,7 +164,7 @@ Use a custom inventory file:
 INVENTORY=hosts.ini ./deploy_all.sh
 ```
 
-To also start the Hermes workspace daemon after deploy:
+To also start the Hermes gateway after deploy:
 
 ```bash
 START_HERMES_AGENTS=1 ./deploy_all.sh
@@ -179,23 +195,23 @@ Secrets live in `vars.yml` (gitignored). Shared templates in `templates/` genera
 
 | Variable | Purpose |
 |----------|---------|
-| `hermes_start_agents` | Start workspace daemon after deploy (default: `false`) |
-| `firecrawl_init_all` | Install Firecrawl npm package in workspace |
+| `hermes_start_agents` | Start the Hermes gateway after deploy (default: `false`; set via `START_HERMES_AGENTS=1` in deploy scripts) |
+| `firecrawl_init_all` | Install Firecrawl npm package in `~/.hermes/workspace` |
 | `firecrawl_verify_install` | Verify Firecrawl after install |
 | `ollama_model` | Local LLM model to pull via Ollama |
 | `tracked_stocks` | Tickers for the investment skill |
 
-Set `hermes_start_agents: false` in `vars.yml` to deploy config and scheduled jobs without starting background agents.
+Set `hermes_start_agents: false` in `vars.yml` to deploy config and scheduled jobs without starting the gateway. Use `START_HERMES_AGENTS=1 ./deploy_local.sh` (or `deploy_all.sh`) when you want the gateway started regardless of `vars.yml`.
 
 ## Scheduled jobs
 
-| Skill | Linux (cron) | macOS (LaunchAgent) |
-|-------|--------------|---------------------|
-| Investment tracker | Midnight | `com.hermes.investment.plist` |
-| Tech news | 5:00 AM | `com.hermes.technews.plist` |
-| Daily digest | 6:00 AM | `com.hermes.dailydigest.plist` |
+| Skill | Schedule | Linux (cron) | macOS (LaunchAgent) |
+|-------|----------|--------------|---------------------|
+| Investment tracker | Midnight | `hermes chat … --skills stock-investment-tracker` | `com.hermes.investment.plist` |
+| Tech news | 5:00 AM | `hermes chat … --skills tech-news-intelligence` | `com.hermes.technews.plist` |
+| Daily digest | 6:00 AM | `hermes chat … --skills daily-morning-digest` | `com.hermes.dailydigest.plist` |
 
-macOS logs are written to `~/.hermes/logs/`.
+macOS logs are written to `~/.hermes/logs/`. On Linux, check gateway status with `systemctl status hermes-workspace`.
 
 ## Troubleshooting
 
@@ -206,6 +222,10 @@ The resolver checked all known install paths and PATH. Try:
 1. Run the core playbook first: `./deploy_local.sh` (or `deploy_hermes.yml` alone)
 2. Confirm the binary exists: `ls -la ~/.local/bin/hermes`
 3. Re-run deploy — `deploy_hermes.yml` will run the official installer if Hermes is missing
+
+### `invalid choice: 'workspace'`
+
+Older versions of these playbooks used removed CLI subcommands (`hermes workspace init`, `sync`, `start`, `run`). Pull the latest playbooks — they now use `hermes postinstall`, `hermes gateway run`, and `hermes chat --skills`.
 
 ### Skill playbook fails after core deploy
 

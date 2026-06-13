@@ -100,16 +100,28 @@
       vars:
         hermes_install_if_missing: true
 
-    - name: Initialize active Hermes Workspace ecosystem
-      shell: "{{ hermes_cmd }} workspace init"
-      args:
-        creates: "{{ target_home }}/.hermes/workspace"
-        executable: /bin/bash
+    - name: Initialize Hermes home directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ target_home }}/.hermes"
+        - "{{ target_home }}/.hermes/skills"
+        - "{{ target_home }}/.hermes/workspace"
+        - "{{ target_home }}/.hermes/logs"
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+    - name: Bootstrap Hermes non-Python dependencies
+      command: "{{ hermes_cmd }} postinstall"
       environment:
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
       become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+      changed_when: false
+      failed_when: false
 
     # --- Step 3: Install Firecrawl Core Dependencies ---
     - name: Install native Firecrawl scraping dependencies inside Node workspace
@@ -156,7 +168,7 @@
         mode: '0644'
         content: |
           [Unit]
-          Description=Hermes Agent Workspace Daemon
+          Description=Hermes Agent Gateway Daemon
           After=network.target ollama.service
 
           [Service]
@@ -164,8 +176,8 @@
           User={{ hermes_user }}
           Environment=HOME={{ hermes_home }}
           Environment=PATH={{ hermes_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
-          WorkingDirectory={{ hermes_home }}/.hermes/workspace
-          ExecStart={{ hermes_cmd }} workspace start
+          WorkingDirectory={{ hermes_home }}/.hermes
+          ExecStart={{ hermes_cmd }} gateway run
           Restart=always
 
           [Install]
@@ -186,8 +198,8 @@
       tags:
         - hermes_agents
 
-    - name: Launch active workspace background daemon worker (macOS via tmux)
-      shell: "tmux kill-session -t hermes_ws || true && tmux new-session -d -s hermes_ws '{{ hermes_cmd }} workspace start'"
+    - name: Launch Hermes gateway daemon (macOS via tmux)
+      shell: "tmux kill-session -t hermes_ws || true && tmux new-session -d -s hermes_ws '{{ hermes_cmd }} gateway run'"
       environment:
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"

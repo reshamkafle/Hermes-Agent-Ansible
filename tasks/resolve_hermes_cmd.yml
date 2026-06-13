@@ -49,7 +49,7 @@
     - hermes_lookup.stdout | trim | length > 0
 
 - name: Fetch and run core Hermes binary installer
-  shell: "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"
+  shell: "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
   environment:
     HOME: "{{ target_home }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"

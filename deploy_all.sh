@@ -6,7 +6,7 @@
 # Usage:
 #   ./deploy_all.sh
 #   INVENTORY=hosts.ini ./deploy_all.sh
-#   START_HERMES_AGENTS=1 ./deploy_all.sh   # also start workspace daemons (default: off)
+#   START_HERMES_AGENTS=1 ./deploy_all.sh   # also start the Hermes gateway (default: off)
 #
 # Prerequisites:
 #   - ansible-playbook installed on this control machine
@@ -23,7 +23,9 @@ LOCALHOST_PATTERN='localhost|127\.0\.0\.1'
 START_HERMES_AGENTS="${START_HERMES_AGENTS:-0}"
 
 EXTRA_PLAYBOOK_ARGS=()
-if [[ "$START_HERMES_AGENTS" != "1" ]]; then
+if [[ "$START_HERMES_AGENTS" == "1" ]]; then
+  EXTRA_PLAYBOOK_ARGS+=(-e hermes_start_agents=true)
+else
   EXTRA_PLAYBOOK_ARGS+=(--skip-tags hermes_agents)
   EXTRA_PLAYBOOK_ARGS+=(-e hermes_start_agents=false)
 fi
@@ -67,6 +69,7 @@ fi
 
 echo "==> Remote hosts:"
 echo "$REMOTE_HOSTS" | sed 's/^/    /'
+echo "==> Hermes gateway after deploy: $([[ "$START_HERMES_AGENTS" == "1" ]] && echo 'start' || echo 'skip (set START_HERMES_AGENTS=1 to start)')"
 echo
 
 for playbook in "${PLAYBOOKS[@]}"; do
@@ -85,3 +88,10 @@ for playbook in "${PLAYBOOKS[@]}"; do
 done
 
 echo "==> All playbooks completed successfully."
+
+if [[ "$START_HERMES_AGENTS" == "1" ]]; then
+  echo
+  echo "==> Hermes gateway started on remote host(s)."
+  echo "    Linux: ssh to the host and run: systemctl status hermes-workspace"
+  echo "    macOS: ssh to the host and run: tmux attach -t hermes_ws"
+fi
