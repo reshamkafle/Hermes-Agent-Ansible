@@ -1,0 +1,79 @@
+---
+- name: Smoke test Telegram bot messaging
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Load Telegram settings from environment (sourced from vars.yml)
+      set_fact:
+        telegram_bot_token: "{{ lookup('env', 'TELEGRAM_BOT_TOKEN') | trim }}"
+        telegram_chat_id: "{{ lookup('env', 'TELEGRAM_HOME_CHANNEL') | trim }}"
+        telegram_allowed_users: >-
+          {{
+            lookup('env', 'TELEGRAM_ALLOWED_USERS') | default('') | split(',')
+            | map('trim') | select('ne', '') | list
+          }}
+        telegram_send_users: >-
+          {{
+            lookup('env', 'TELEGRAM_SEND_USERS') | default('') | split(',')
+            | map('trim') | select('ne', '') | list
+          }}
+
+    - name: Resolve Telegram smoke test destination chat IDs
+      set_fact:
+        telegram_smoke_test_chat_ids: >-
+          {{
+            (
+              telegram_send_users
+              + ([telegram_chat_id] if telegram_chat_id | length > 0 else [])
+              + telegram_allowed_users
+            )
+            | unique
+            | list
+          }}
+
+    - name: Validate Telegram credentials are configured
+      assert:
+        that:
+          - telegram_bot_token | length > 0
+          - telegram_smoke_test_chat_ids | length > 0
+        fail_msg: >-
+          Telegram environment variables are missing or empty.
+          Run ./test_telegram.sh to load them from vars.yml, or export
+          TELEGRAM_BOT_TOKEN and TELEGRAM_SEND_USERS / TELEGRAM_HOME_CHANNEL /
+          TELEGRAM_ALLOWED_USERS before running this playbook.
+
+    - name: Send Telegram smoke test message
+      uri:
+        url: "https://api.telegram.org/bot{{ telegram_bot_token }}/sendMessage"
+        method: POST
+        body_format: json
+        body:
+          chat_id: "{{ item }}"
+          text: >-
+            Hermes Agent Ansible — Telegram smoke test OK.
+            If you see this, the bot can deliver messages.
+        status_code: 200
+      loop: "{{ telegram_smoke_test_chat_ids }}"
+      register: telegram_smoke_test_results
+
+    - name: Verify Telegram API accepted each message
+      assert:
+        that:
+          - item.json.ok | default(false)
+        fail_msg: >-
+          Telegram API error for chat_id {{ item.item }}:
+          {{ item.json.description | default(item.msg) }}
+      loop: "{{ telegram_smoke_test_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Report smoke test success
+      debug:
+        msg: >-
+          Telegram smoke test passed for chat_id {{ item.item }}
+          (message_id {{ item.json.result.message_id }}).
+      loop: "{{ telegram_smoke_test_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
