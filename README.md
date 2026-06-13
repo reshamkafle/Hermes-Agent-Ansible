@@ -1,6 +1,6 @@
 # Hermes Agent Ansible
 
-Ansible playbooks to deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on remote Linux or macOS hosts. The setup installs Ollama, configures Hermes with Firecrawl and Telegram, and schedules automated skills for stock tracking, tech news, and a daily HTML digest.
+Ansible playbooks to deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on Linux or macOS — either on a **remote host** over SSH or on **this machine** (localhost). The setup installs Ollama, configures Hermes with Firecrawl and Telegram, and schedules automated skills for stock tracking, tech news, and a daily HTML digest.
 
 ## What it deploys
 
@@ -13,22 +13,39 @@ Ansible playbooks to deploy [Hermes Agent](https://github.com/NousResearch/herme
 
 ## Prerequisites
 
-- `ansible-playbook` on your control machine
-- SSH access to a remote host (this repo does **not** deploy to localhost)
+- `ansible-playbook` installed
+- `vars.yml` configured (copy from `vars.example..yml`)
 - API keys for Telegram and Firecrawl
+
+**Remote deploy** (`deploy_all.sh`):
+
+- SSH access to a remote host
+- `inventory.ini` listing that host (copy from `inventory.example.ini`)
+
+**Local deploy** (`deploy_local.sh`):
+
+- No inventory or SSH required
+- macOS: [Homebrew](https://brew.sh/) installed (playbooks install Ollama, git, node, and tmux via brew)
 
 ## Setup
 
-1. Copy the example files and fill in your values:
+1. Copy and edit `vars.yml`:
 
 ```bash
 cp vars.example..yml vars.yml
+```
+
+Fill in your Ollama model, Telegram IDs, Firecrawl key, and stock tickers.
+
+2. For **remote** deploy only, copy and edit the inventory:
+
+```bash
 cp inventory.example.ini inventory.ini
 ```
 
-2. Edit `vars.yml` with your Ollama model, Telegram IDs, Firecrawl key, and stock tickers.
+Replace the example host with your server IP or hostname and SSH user. Do **not** use `localhost` or `127.0.0.1` — `deploy_all.sh` refuses to run without a remote target.
 
-3. Edit `inventory.ini` with your remote host and SSH user.
+On **local** deploy, `hermes_user` and `hermes_home` in `vars.yml` are ignored on macOS; playbooks use your normal home directory (`~/.hermes/`).
 
 ## Telegram smoke test
 
@@ -45,7 +62,24 @@ Set `telegram_bot_token` and at least one of `telegram_chat_id` or `telegram_all
 
 ## Run
 
-Deploy all playbooks to remote hosts (agents stay stopped by default):
+### Local (this machine)
+
+Deploy all playbooks to localhost (agents stay stopped by default):
+
+```bash
+chmod +x deploy_local.sh
+./deploy_local.sh
+```
+
+To also start the Hermes workspace daemon after deploy:
+
+```bash
+START_HERMES_AGENTS=1 ./deploy_local.sh
+```
+
+### Remote (SSH)
+
+Deploy all playbooks to hosts in `inventory.ini` (agents stay stopped by default):
 
 ```bash
 chmod +x deploy_all.sh
@@ -64,11 +98,24 @@ To also start the Hermes workspace daemon after deploy:
 START_HERMES_AGENTS=1 ./deploy_all.sh
 ```
 
-Run a single playbook:
+### Single playbook
+
+Remote:
 
 ```bash
 ansible-playbook -i inventory.ini deploy_hermes.yml -e hermes_start_agents=false
 ```
+
+Local:
+
+```bash
+ansible-playbook -i 'localhost,' -c local -e ansible_become=false deploy_hermes.yml -e hermes_start_agents=false
+```
+
+| Script | Target |
+|--------|--------|
+| `deploy_local.sh` | This machine only (`localhost`) |
+| `deploy_all.sh` | Remote hosts only (refuses localhost) |
 
 ## Configuration
 
