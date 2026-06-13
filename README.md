@@ -158,7 +158,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | Hermes CLI not found | Run `deploy_hermes.yml` first; check `~/.local/bin/hermes` |
 | Skill playbook fails | Core deploy must run first — use `deploy_local.sh` / `deploy_all.sh` |
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
-| Digest smoke test fails | Ensure Ollama is running (`ollama list`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for Ollama. Check `~/.hermes/skills/daily_digest.md` and logs in `~/.hermes/logs/` |
+| Digest smoke test fails | Ensure Ollama is running (`ollama list`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for Ollama. Check `~/.hermes/skills/daily-morning-digest/SKILL.md` and logs in `~/.hermes/logs/` |
 | `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For local Ollama, `model.provider` must be `custom` with `base_url: http://127.0.0.1:11434/v1` |
 | macOS job not firing | `launchctl list \| grep hermes` · reload plist after re-deploy |
 

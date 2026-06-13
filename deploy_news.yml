@@ -25,9 +25,18 @@
         mode: '0755'
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
+    - name: Remove legacy flat tech news skill files (Hermes resolves skill-name/SKILL.md only)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ target_home }}/.hermes/skills/tech_news.md"
+        - "{{ target_home }}/.hermes/skills/tech-news-intelligence.md"
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+
     - name: Create and inject Hermes IT & AI Intelligence News Skill
       copy:
-        dest: "{{ target_home }}/.hermes/skills/tech_news.md"
+        dest: "{{ target_home }}/.hermes/skills/tech-news-intelligence/SKILL.md"
         owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0644'

@@ -74,7 +74,7 @@
 
     - name: Check daily-morning-digest skill is deployed
       stat:
-        path: "{{ target_home }}/.hermes/skills/daily_digest.md"
+        path: "{{ target_home }}/.hermes/skills/daily-morning-digest/SKILL.md"
       register: digest_skill_stat
 
     - name: Require daily-morning-digest skill
@@ -83,7 +83,7 @@
           - digest_skill_stat.stat.exists
         fail_msg: >-
           daily-morning-digest skill not found at
-          {{ target_home }}/.hermes/skills/daily_digest.md.
+          {{ target_home }}/.hermes/skills/daily-morning-digest/SKILL.md.
           Run deploy_digest.yml or ./deploy_local.sh.
 
     - name: Sync Hermes config, secrets, and runtime wrapper from vars.yml
