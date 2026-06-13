@@ -1,0 +1,123 @@
+---
+- name: Smoke test Hermes daily digest (news + investment via Telegram)
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Establish workspace path variables
+      set_fact:
+        target_home: "{{ ansible_facts['env']['HOME'] | default(lookup('env', 'HOME')) }}"
+        target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
+
+    - name: Resolve Hermes CLI path (no install)
+      import_tasks: tasks/resolve_hermes_cmd.yml
+      vars:
+        hermes_install_if_missing: false
+
+    - name: Validate credentials required for digest skills
+      assert:
+        that:
+          - telegram_bot_token | trim | length > 0
+          - firecrawl_api_key | trim | length > 0
+          - >-
+            (
+              (telegram_send_users | default([]))
+              + (telegram_allowed_users | default([]))
+              + ([telegram_chat_id] if (telegram_chat_id | default('') | trim | length > 0) else [])
+            ) | map('trim') | select('ne', '') | list | length > 0
+        fail_msg: >-
+          Configure telegram_bot_token, firecrawl_api_key, and at least one
+          Telegram recipient in vars.yml before running this smoke test.
+
+    - name: Check Hermes home directory exists
+      stat:
+        path: "{{ target_home }}/.hermes"
+      register: hermes_home_stat
+
+    - name: Require prior Hermes deploy
+      assert:
+        that:
+          - hermes_home_stat.stat.exists
+        fail_msg: >-
+          {{ target_home }}/.hermes not found. Run ./deploy_local.sh first to
+          install Hermes, skills, and Telegram configuration.
+
+    - name: Check daily-morning-digest skill is deployed
+      stat:
+        path: "{{ target_home }}/.hermes/skills/daily_digest.md"
+      register: digest_skill_stat
+
+    - name: Require daily-morning-digest skill
+      assert:
+        that:
+          - digest_skill_stat.stat.exists
+        fail_msg: >-
+          daily-morning-digest skill not found at
+          {{ target_home }}/.hermes/skills/daily_digest.md.
+          Run deploy_digest.yml or ./deploy_local.sh.
+
+    - name: Sync Hermes environment from vars.yml
+      template:
+        src: templates/hermes.env.j2
+        dest: "{{ target_home }}/.hermes/.env"
+        mode: "0600"
+
+    - name: Ensure digest output directory exists
+      file:
+        path: "{{ target_home }}/.hermes/workspace/digest"
+        state: directory
+        mode: "0755"
+
+    - name: Run Hermes daily morning digest skill (same command as 6 AM scheduler)
+      shell: |
+        set -euo pipefail
+        export HOME="{{ target_home }}"
+        export PATH="{{ hermes_path_prefix }}:${PATH}"
+        set -a
+        # shellcheck disable=SC1091
+        source "{{ target_home }}/.hermes/.env"
+        set +a
+        exec "{{ hermes_cmd }}" chat -Q -q 'Run the daily-morning-digest skill according to its instructions.' --skills daily-morning-digest --yolo
+      args:
+        executable: /bin/bash
+      register: hermes_digest_run
+      async: "{{ smoke_test_timeout_seconds | default(1800) }}"
+      poll: 30
+
+    - name: Verify Hermes digest command succeeded
+      assert:
+        that:
+          - hermes_digest_run.rc == 0
+        fail_msg: >-
+          Hermes daily-morning-digest failed (rc={{ hermes_digest_run.rc }}).
+          Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
+
+    - name: Verify combined digest HTML was generated
+      stat:
+        path: "{{ target_home }}/.hermes/workspace/digest/daily_digest.html"
+      register: digest_html_stat
+
+    - name: Require non-empty digest HTML artifact
+      assert:
+        that:
+          - digest_html_stat.stat.exists
+          - digest_html_stat.stat.size | int > 0
+        fail_msg: >-
+          Expected {{ target_home }}/.hermes/workspace/digest/daily_digest.html
+          to exist after the skill run.
+
+    - name: Confirm digest HTML includes news and investment content
+      shell: grep -Eqi 'tech|investment|briefing' "{{ target_home }}/.hermes/workspace/digest/daily_digest.html"
+      changed_when: false
+
+    - name: Report smoke test success
+      debug:
+        msg: >-
+          Hermes daily digest smoke test passed.
+          Combined news + investment HTML:
+          {{ target_home }}/.hermes/workspace/digest/daily_digest.html
+          ({{ digest_html_stat.stat.size }} bytes).
+          Check Telegram for the attached digest message sent to your configured recipients.
