@@ -1,0 +1,111 @@
+---
+# Resolve the Hermes CLI binary path across macOS and Linux.
+# Requires: target_home
+# Optional: target_user (for Debian become), hermes_install_if_missing (default false)
+
+- name: Set Hermes PATH prefix for user-scoped installs
+  set_fact:
+    hermes_path_prefix: "{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+
+- name: Initialize Hermes CLI path variable
+  set_fact:
+    hermes_cmd: ""
+
+- name: Check known Hermes CLI install locations
+  stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ target_home }}/.local/bin/hermes"
+    - /opt/homebrew/bin/hermes
+    - /usr/local/bin/hermes
+  register: hermes_bin_candidates
+
+- name: Record Hermes CLI path from known locations
+  set_fact:
+    hermes_cmd: "{{ (hermes_bin_candidates.results | selectattr('stat.exists') | map(attribute='item') | list | first) }}"
+  when:
+    - hermes_cmd | length == 0
+    - hermes_bin_candidates.results | selectattr('stat.exists') | list | length > 0
+
+- name: Look up Hermes CLI on PATH
+  shell: |
+    export HOME="{{ target_home }}"
+    export PATH="{{ hermes_path_prefix }}:${PATH}"
+    command -v hermes
+  args:
+    executable: /bin/bash
+  register: hermes_lookup
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+  when: hermes_cmd | length == 0
+
+- name: Record Hermes CLI path from PATH lookup
+  set_fact:
+    hermes_cmd: "{{ hermes_lookup.stdout | trim }}"
+  when:
+    - hermes_cmd | length == 0
+    - hermes_lookup.stdout | trim | length > 0
+
+- name: Fetch and run core Hermes binary installer
+  shell: "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+  when:
+    - hermes_cmd | length == 0
+    - hermes_install_if_missing | default(false) | bool
+
+- name: Re-check known Hermes CLI install locations after install
+  stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ target_home }}/.local/bin/hermes"
+    - /opt/homebrew/bin/hermes
+    - /usr/local/bin/hermes
+  register: hermes_bin_candidates_after_install
+  when:
+    - hermes_cmd | length == 0
+    - hermes_install_if_missing | default(false) | bool
+
+- name: Record Hermes CLI path from known locations after install
+  set_fact:
+    hermes_cmd: "{{ (hermes_bin_candidates_after_install.results | selectattr('stat.exists') | map(attribute='item') | list | first) }}"
+  when:
+    - hermes_cmd | length == 0
+    - hermes_bin_candidates_after_install.results is defined
+    - hermes_bin_candidates_after_install.results | selectattr('stat.exists') | list | length > 0
+
+- name: Look up Hermes CLI on PATH after install
+  shell: |
+    export HOME="{{ target_home }}"
+    export PATH="{{ hermes_path_prefix }}:${PATH}"
+    command -v hermes
+  args:
+    executable: /bin/bash
+  register: hermes_lookup_after_install
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+  when:
+    - hermes_cmd | length == 0
+    - hermes_install_if_missing | default(false) | bool
+
+- name: Record Hermes CLI path from PATH lookup after install
+  set_fact:
+    hermes_cmd: "{{ hermes_lookup_after_install.stdout | trim }}"
+  when:
+    - hermes_cmd | length == 0
+    - hermes_lookup_after_install.stdout | default('') | trim | length > 0
+
+- name: Verify Hermes CLI is available
+  fail:
+    msg: >-
+      Hermes CLI not found. Checked {{ target_home }}/.local/bin/hermes,
+      /opt/homebrew/bin/hermes, /usr/local/bin/hermes, and PATH prefix
+      {{ hermes_path_prefix }}.
+  when: hermes_cmd | length == 0

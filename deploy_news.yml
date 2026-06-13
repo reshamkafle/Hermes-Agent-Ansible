@@ -1,6 +1,7 @@
 ---
 - name: Deploy Hermes IT and AI Intelligence News Aggregator
   hosts: all
+  gather_facts: true
   become: false
   vars_files:
     - vars.yml
@@ -11,6 +12,9 @@
       set_fact:
         target_home: "{{ hermes_home if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['HOME'] | default(lookup('env', 'HOME'))) }}"
         target_user: "{{ hermes_user if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['USER'] | default(ansible_user_id)) }}"
+
+    - name: Resolve Hermes CLI path
+      import_tasks: tasks/resolve_hermes_cmd.yml
 
     - name: Create dedicated Workspace Skill Directory if it doesn't exist
       file:
@@ -61,9 +65,10 @@
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
     - name: Sync changes into active workspace architecture
-      command: /usr/local/bin/hermes workspace sync
+      command: "{{ hermes_cmd }} workspace sync"
       environment:
         HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
       become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
       failed_when: false
@@ -75,7 +80,7 @@
         minute: "0"
         hour: "5"
         user: "{{ hermes_user }}"
-        job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run tech-news-intelligence"
+        job: "HOME={{ target_home }} PATH={{ hermes_path_prefix }}:$PATH {{ hermes_cmd }} workspace run tech-news-intelligence"
       when: ansible_facts['os_family'] == 'Debian'
       become: true
 

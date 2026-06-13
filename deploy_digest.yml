@@ -1,6 +1,7 @@
 ---
 - name: Deploy Hermes Daily Morning Digest (News + Investment HTML)
   hosts: all
+  gather_facts: true
   become: false
   vars_files:
     - vars.yml
@@ -10,6 +11,9 @@
       set_fact:
         target_home: "{{ hermes_home if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['HOME'] | default(lookup('env', 'HOME'))) }}"
         target_user: "{{ hermes_user if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['USER'] | default(ansible_user_id)) }}"
+
+    - name: Resolve Hermes CLI path
+      import_tasks: tasks/resolve_hermes_cmd.yml
 
     - name: Create dedicated digest outputs directory
       file:
@@ -63,9 +67,10 @@
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
     - name: Trigger Hermes workspace synchronization
-      command: /usr/local/bin/hermes workspace sync
+      command: "{{ hermes_cmd }} workspace sync"
       environment:
         HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
       become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
       failed_when: false
@@ -77,7 +82,7 @@
         minute: "0"
         hour: "6"
         user: "{{ hermes_user }}"
-        job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run daily-morning-digest"
+        job: "HOME={{ target_home }} PATH={{ hermes_path_prefix }}:$PATH {{ hermes_cmd }} workspace run daily-morning-digest"
       when: ansible_facts['os_family'] == 'Debian'
       become: true
 

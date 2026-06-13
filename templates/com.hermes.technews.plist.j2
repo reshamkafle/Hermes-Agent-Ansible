@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.hermes.dailydigest</string>
+    <string>com.hermes.technews</string>
     <key>ProgramArguments</key>
     <array>
         <string>{{ hermes_cmd }}</string>
         <string>workspace</string>
         <string>run</string>
-        <string>daily-morning-digest</string>
+        <string>tech-news-intelligence</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -21,13 +21,13 @@
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
-        <integer>6</integer>
+        <integer>5</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>{{ target_home }}/.hermes/logs/dailydigest.stdout.log</string>
+    <string>{{ target_home }}/.hermes/logs/technews.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>{{ target_home }}/.hermes/logs/dailydigest.stderr.log</string>
+    <string>{{ target_home }}/.hermes/logs/technews.stderr.log</string>
 </dict>
 </plist>

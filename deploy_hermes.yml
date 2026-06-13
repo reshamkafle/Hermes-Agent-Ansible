@@ -95,61 +95,10 @@
       become: true
 
     # --- Step 2: Install Hermes Core CLI & Workspace ---
-    - name: Look up Hermes CLI on PATH
-      shell: |
-        export HOME="{{ target_home }}"
-        export PATH="{{ hermes_path_prefix }}:${PATH}"
-        command -v hermes
-      args:
-        executable: /bin/bash
-      register: hermes_lookup
-      changed_when: false
-      failed_when: false
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-
-    - name: Record Hermes CLI path when already installed
-      set_fact:
-        hermes_cmd: "{{ hermes_lookup.stdout | trim }}"
-      when: hermes_lookup.rc == 0 and hermes_lookup.stdout | trim | length > 0
-
-    - name: Fetch and run core Hermes binary installer
-      shell: "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"
-      environment:
-        HOME: "{{ target_home }}"
-        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-      when: hermes_cmd is not defined
-
-    - name: Look up Hermes CLI on PATH after install
-      shell: |
-        export HOME="{{ target_home }}"
-        export PATH="{{ hermes_path_prefix }}:${PATH}"
-        command -v hermes
-      args:
-        executable: /bin/bash
-      register: hermes_lookup_after_install
-      changed_when: false
-      failed_when: false
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-      when: hermes_cmd is not defined
-
-    - name: Record Hermes CLI path after install
-      set_fact:
-        hermes_cmd: "{{ hermes_lookup_after_install.stdout | trim }}"
-      when:
-        - hermes_cmd is not defined
-        - hermes_lookup_after_install.rc == 0
-        - hermes_lookup_after_install.stdout | trim | length > 0
-
-    - name: Verify Hermes CLI is available
-      fail:
-        msg: >-
-          Hermes CLI not found after install. Checked PATH with HOME={{ target_home }}
-          and prefix {{ hermes_path_prefix }}.
-      when: hermes_cmd is not defined or hermes_cmd | length == 0
+    - name: Resolve Hermes CLI path (install if missing)
+      import_tasks: tasks/resolve_hermes_cmd.yml
+      vars:
+        hermes_install_if_missing: true
 
     - name: Initialize active Hermes Workspace ecosystem
       shell: "{{ hermes_cmd }} workspace init"
@@ -214,7 +163,7 @@
           Type=simple
           User={{ hermes_user }}
           Environment=HOME={{ hermes_home }}
-          Environment=PATH={{ hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin
+          Environment=PATH={{ hermes_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
           WorkingDirectory={{ hermes_home }}/.hermes/workspace
           ExecStart={{ hermes_cmd }} workspace start
           Restart=always
@@ -239,6 +188,9 @@
 
     - name: Launch active workspace background daemon worker (macOS via tmux)
       shell: "tmux kill-session -t hermes_ws || true && tmux new-session -d -s hermes_ws '{{ hermes_cmd }} workspace start'"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
       when:
         - ansible_facts['os_family'] != 'Debian'
         - hermes_start_agents | default(false) | bool
