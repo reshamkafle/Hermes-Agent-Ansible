@@ -1,0 +1,18 @@
+model: "ollama/{{ ollama_model }}"
+providers:
+  ollama:
+    api_base: "{{ ollama_base_url }}"
+gateway:
+  enabled: true
+  platform: "telegram"
+  allow_all_users: false
+cron:
+  wrap_response: false
+web:
+  backend: firecrawl
+  search_backend: firecrawl
+  extract_backend: firecrawl
+{% if firecrawl_use_browser_auth | default(false) | bool %}
+browser:
+  cloud_provider: firecrawl
+{% endif %}

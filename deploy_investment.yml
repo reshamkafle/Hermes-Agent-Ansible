@@ -1,0 +1,89 @@
+---
+- name: Deploy Hermes Investment Skill Tracking System with Midnight Crontab
+  hosts: all
+  become: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    # Set the path dynamically based on whether it's macOS or Linux/WSL2
+    - name: Establish operational workspace path variables
+      set_fact:
+        target_home: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
+        target_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+
+    - name: Create dedicated Investment outputs directory
+      file:
+        path: "{{ target_home }}/.hermes/workspace/investment"
+        state: directory
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        mode: '0755'
+
+    - name: Template active stock watchlist file into the workspace
+      copy:
+        dest: "{{ target_home }}/.hermes/workspace/investment/watchlist.txt"
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        mode: '0644'
+        content: |
+          # Watchlist managed by Ansible
+          {% for stock in tracked_stocks %}
+          {{ stock }}
+          {% endfor %}
+
+    - name: Create and inject Hermes Custom Investment Skill
+      copy:
+        dest: "{{ target_home }}/.hermes/workspace/skills/investment.md"
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        mode: '0644'
+        content: |
+          ---
+          name: stock-investment-tracker
+          description: Uses Firecrawl to scrape financial historical contexts and formulate 7-day predictive models.
+          version: 1.0.0
+          ---
+          
+          ## Objectives
+          You are an automated Quantitative Analyst. Your job is to extract financial trends for the watchlist, gather data over the past 7 days, and output an extraction analysis alongside a 7-day horizon projection.
+
+          ## Operational Procedure
+          1. Read the list of target tickers located in `../investment/watchlist.txt`.
+          2. For each stock ticker found:
+             - Call the **Firecrawl Web Scraping tool** to fetch historical financial performance and metrics spanning the **last 7 days**.
+          3. Process the extracted records to construct a **7-day trend predictive analysis**.
+          4. Format the final output cleanly in Markdown table structures and save the analysis inside `../investment/report.md`.
+          5. Broadcast this generated report actively to all configured recipient accounts linked in your secret variables registry over Telegram.
+
+    - name: Configure Hermes Secrets Environment (.env) with multiple user access
+      template:
+        src: "{{ playbook_dir }}/templates/hermes.env.j2"
+        dest: "{{ target_home }}/.hermes/.env"
+        mode: '0600'
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+
+    - name: Trigger Hermes workspace synchronization
+      command: /usr/local/bin/hermes workspace sync
+      environment:
+        HOME: "{{ target_home }}"
+      become_user: "{{ target_user }}"
+      failed_when: false
+
+    # --- Midnight System Automation Config (OS-Independent) ---
+    - name: Install Midnight Cron Automation (Linux / WSL2)
+      cron:
+        name: "Run Midnight Hermes Investment Analytics Report"
+        minute: "0"
+        hour: "0"
+        user: "{{ hermes_user }}"
+        job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run stock-investment-tracker"
+      when: ansible_os_family == 'Debian'
+
+    - name: Configure Midnight Automation LaunchAgent (macOS)
+      template:
+        src: "{{ playbook_dir }}/templates/com.hermes.investment.plist.j2"
+        dest: "{{ target_home }}/Library/LaunchAgents/com.hermes.investment.plist"
+        mode: '0644'
+      when: ansible_os_family == 'Darwin'

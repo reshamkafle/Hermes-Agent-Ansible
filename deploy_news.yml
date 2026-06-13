@@ -1,0 +1,82 @@
+---
+- name: Deploy Hermes IT and AI Intelligence News Aggregator
+  hosts: all
+  become: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    # Set workspace and home directory variables dynamically across hosts
+    - name: Establish operational workspace path variables
+      set_fact:
+        target_home: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
+        target_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+
+    - name: Create dedicated Workspace Skill Directory if it doesn't exist
+      file:
+        path: "{{ target_home }}/.hermes/workspace/skills"
+        state: directory
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        mode: '0755'
+
+    - name: Create and inject Hermes IT & AI Intelligence News Skill
+      copy:
+        dest: "{{ target_home }}/.hermes/workspace/skills/tech_news.md"
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        mode: '0644'
+        content: |
+          ---
+          name: tech-news-intelligence
+          description: Leverages Firecrawl to gather high-signal IT, infrastructure, product launches, and AI updates.
+          version: 1.0.0
+          ---
+          
+          ## Objectives
+          You are an advanced IT Research Assistant. Your goal is to bypass the noise and extract actionable intelligence regarding new AI model weights, tooling, developer software releases, and enterprise infrastructure news.
+
+          ## Operational Procedure
+          1. Use the **Firecrawl Web Scraping tool** to check trending topics and technical headlines from the following key locations:
+             - Hacker News (https://news.ycombinator.com) - Filtering for AI, LLMs, Open-source tool developments, and infrastructure.
+             - TechCrunch (https://techcrunch.com/category/artificial-intelligence/) - For corporate AI product releases and tech industry pivots.
+             - GitHub Trending (https://github.com/trending) - For emerging open-source developer tooling frameworks.
+          2. Parse the extracted data to filter out low-value op-eds and clickbait.
+          3. Structure the payload into clear categories:
+             - **🤖 AI & LLM Breakthroughs:** Model releases, fine-tuning techniques, and framework updates.
+             - **💻 Enterprise IT & DevOps:** Systems updates, cloud advancements, databases, and architectural frameworks.
+             - **🛠️ Product & Developer Tooling Launches:** New apps, IDE features, and developer tool ecosystems.
+          4. Format the summary explicitly inside Markdown blocks and cache it inside `../workspace/tech_news_report.md`.
+          5. Route the final formatted digest to all accounts registered in your Telegram broadcast group.
+
+    - name: Inject Hermes environment secrets from vars
+      template:
+        src: "{{ playbook_dir }}/templates/hermes.env.j2"
+        dest: "{{ target_home }}/.hermes/.env"
+        mode: '0600'
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+
+    - name: Sync changes into active workspace architecture
+      command: /usr/local/bin/hermes workspace sync
+      environment:
+        HOME: "{{ target_home }}"
+      become_user: "{{ target_user }}"
+      failed_when: false
+
+    # --- 5:00 AM Daily System Automation Configuration (runs before 6 AM digest) ---
+    - name: Configure Morning Tech Intelligence Cron Automation (Linux / WSL2)
+      cron:
+        name: "Run Daily Morning Hermes IT and AI Intelligence Digest"
+        minute: "0"
+        hour: "5"
+        user: "{{ hermes_user }}"
+        job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run tech-news-intelligence"
+      when: ansible_os_family == 'Debian'
+
+    - name: Configure Morning Automation LaunchAgent (macOS)
+      template:
+        src: "{{ playbook_dir }}/templates/com.hermes.technews.plist.j2"
+        dest: "{{ target_home }}/Library/LaunchAgents/com.hermes.technews.plist"
+        mode: '0644'
+      when: ansible_os_family == 'Darwin'

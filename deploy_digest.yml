@@ -1,0 +1,90 @@
+---
+- name: Deploy Hermes Daily Morning Digest (News + Investment HTML)
+  hosts: all
+  become: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Establish operational workspace path variables
+      set_fact:
+        target_home: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
+        target_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+
+    - name: Create dedicated digest outputs directory
+      file:
+        path: "{{ target_home }}/.hermes/workspace/digest"
+        state: directory
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        mode: '0755'
+
+    - name: Create and inject Hermes Daily Morning Digest Skill
+      copy:
+        dest: "{{ target_home }}/.hermes/workspace/skills/daily_digest.md"
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        mode: '0644'
+        content: |
+          ---
+          name: daily-morning-digest
+          description: Combines tech news and investment reports into a Bootstrap HTML briefing for telegram_send_users.
+          version: 1.0.0
+          ---
+
+          ## Objectives
+          You are a Daily Briefing Publisher. Every morning at 6 AM, merge the latest IT/AI news digest and investment analytics into one polished Bootstrap HTML report and deliver it to the recipients configured in `TELEGRAM_SEND_USERS`.
+
+          ## Operational Procedure
+          1. Read the cached tech news report from `tech_news_report.md` in the workspace root.
+          2. Read the cached investment report from `investment/report.md`.
+          3. If either file is missing or empty, run the corresponding skill first (`tech-news-intelligence` or `stock-investment-tracker`), then re-read the file.
+          4. Build a complete HTML5 document using Bootstrap 5 with this CDN in the `<head>`:
+             `https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css`
+             Structure the page with:
+             - A hero header card titled **Hermes Daily Briefing** with today's date
+             - A **Tech & AI Intelligence** section (convert news markdown to semantic HTML inside a Bootstrap card)
+             - An **Investment Tracker** section (convert investment markdown tables to `<table class="table table-striped table-hover">`)
+             - Responsive layout using `container`, `row`, `col`, `card`, `card-header`, and `card-body`
+          5. Save the final HTML to `digest/daily_digest.html`.
+          6. Deliver the digest to every user ID in the `TELEGRAM_SEND_USERS` environment variable (comma-separated numeric IDs):
+             - Attach `digest/daily_digest.html` as a document using the `MEDIA:` prefix
+             - Send each recipient a short plain-text summary noting that the full Bootstrap HTML report is attached
+
+    - name: Inject Hermes environment secrets from vars
+      template:
+        src: "{{ playbook_dir }}/templates/hermes.env.j2"
+        dest: "{{ target_home }}/.hermes/.env"
+        mode: '0600'
+        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+
+    - name: Trigger Hermes workspace synchronization
+      command: /usr/local/bin/hermes workspace sync
+      environment:
+        HOME: "{{ target_home }}"
+      become_user: "{{ target_user }}"
+      failed_when: false
+
+    # --- 6:00 AM Daily Digest Cron ---
+    - name: Configure 6 AM Daily Digest Cron Automation (Linux / WSL2)
+      cron:
+        name: "Run Daily Morning Hermes Digest (News + Investment HTML)"
+        minute: "0"
+        hour: "6"
+        user: "{{ hermes_user }}"
+        job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run daily-morning-digest"
+      when: ansible_os_family == 'Debian'
+
+    - name: Configure 6 AM Daily Digest LaunchAgent (macOS)
+      template:
+        src: "{{ playbook_dir }}/templates/com.hermes.dailydigest.plist.j2"
+        dest: "{{ target_home }}/Library/LaunchAgents/com.hermes.dailydigest.plist"
+        mode: '0644'
+      when: ansible_os_family == 'Darwin'
+
+    - name: Load 6 AM Daily Digest LaunchAgent (macOS)
+      shell: launchctl load -w "{{ target_home }}/Library/LaunchAgents/com.hermes.dailydigest.plist"
+      when: ansible_os_family == 'Darwin'
+      become: false
+      failed_when: false

@@ -1,0 +1,159 @@
+---
+- name: Cross-Platform Hermes Agent Workspace Deployment
+  hosts: all
+  become: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Detect and validate operating system family
+      fail:
+        msg: "This target OS system is not supported by this playbook. Use Ubuntu, Debian, macOS, or WSL2."
+      when: ansible_os_family != 'Debian' and ansible_os_family != 'Darwin'
+
+    # --- System Package Management ---
+    - name: Install required baseline dependencies (Linux / WSL2)
+      apt:
+        name: [curl, git, python3-pip, python3-venv, nodejs, npm, tmux]
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: Install required baseline dependencies (macOS via Homebrew)
+      homebrew:
+        name: [curl, git, python, node, tmux]
+        state: present
+      when: ansible_os_family == 'Darwin'
+      become: false
+
+    - name: Create execution system user for Hermes Agent
+      user:
+        name: "{{ hermes_user }}"
+        shell: /bin/bash
+        create_home: yes
+      when: ansible_os_family == 'Debian'
+
+    # --- Step 1: Install & Set Up Ollama Engine ---
+    - name: Check if Ollama engine is present
+      stat:
+        path: "{{ '/usr/local/bin/ollama' if ansible_os_family == 'Debian' else '/usr/local/bin/ollama' }}"
+      register: ollama_bin
+
+    - name: Install Ollama via official web installer (Linux / WSL2)
+      shell: curl -fsSL https://ollama.com/install.sh | sh
+      when: ansible_os_family == 'Debian' and not ollama_bin.stat.exists
+
+    - name: Install Ollama via Homebrew Cask (macOS)
+      homebrew_cask:
+        name: ollama
+        state: present
+      when: ansible_os_family == 'Darwin' and not ollama_bin.stat.exists
+      become: false
+
+    - name: Manage Ollama Daemon Lifecycle (Linux / WSL2 systemd)
+      systemd:
+        name: ollama
+        state: started
+        enabled: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: Pull local LLM inference model via Ollama
+      command: "ollama pull {{ ollama_model }}"
+      async: 1800
+      poll: 15
+
+    # --- Step 2: Install Hermes Core CLI & Workspace ---
+    - name: Check for pre-existing Hermes binary
+      stat:
+        path: /usr/local/bin/hermes
+      register: hermes_bin
+
+    - name: Fetch and run core Hermes binary installer
+      shell: "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"
+      environment:
+        HOME: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
+      become_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+      when: not hermes_bin.stat.exists
+
+    - name: Initialize active Hermes Workspace ecosystem
+      command: /usr/local/bin/hermes workspace init
+      args:
+        creates: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/workspace"
+      environment:
+        HOME: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
+      become_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+
+    # --- Step 3: Install Firecrawl Core Dependencies ---
+    - name: Install native Firecrawl scraping dependencies inside Node workspace
+      npm:
+        name: "@mendable/firecrawl-js"
+        path: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/workspace"
+        state: present
+      become_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+      when: firecrawl_init_all | default(true) | bool
+
+    - name: Verify Firecrawl npm package installation
+      command: npm list @mendable/firecrawl-js
+      args:
+        chdir: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/workspace"
+      register: firecrawl_npm_check
+      changed_when: false
+      failed_when: firecrawl_npm_check.rc != 0
+      become_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+      when: firecrawl_verify_install | default(true) | bool
+
+    # --- Step 4: Map Environment Variable Structure ---
+    - name: Deploy structured Hermes unified config.yaml
+      template:
+        src: "{{ playbook_dir }}/templates/hermes.config.yaml.j2"
+        dest: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/config.yaml"
+        mode: '0644'
+
+    - name: Inject application keys into operational environment secrets (.env)
+      template:
+        src: "{{ playbook_dir }}/templates/hermes.env.j2"
+        dest: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/.env"
+        mode: '0600'
+
+    # --- Step 5: Start Daemon/Background Workers ---
+    - name: Configure and mount Linux systemd service worker (Linux / WSL2)
+      copy:
+        dest: /etc/systemd/system/hermes-workspace.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Hermes Agent Workspace Daemon
+          After=network.target ollama.service
+
+          [Service]
+          Type=simple
+          User={{ hermes_user }}
+          Environment=HOME={{ hermes_home }}
+          WorkingDirectory={{ hermes_home }}/.hermes/workspace
+          ExecStart=/usr/local/bin/hermes workspace start
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+      when: ansible_os_family == 'Debian'
+
+    - name: Launch Hermes background environment via systemd (Linux / WSL2)
+      systemd:
+        name: hermes-workspace
+        daemon_reload: yes
+        state: restarted
+        enabled: yes
+      when:
+        - ansible_os_family == 'Debian'
+        - hermes_start_agents | default(false) | bool
+      tags:
+        - hermes_agents
+
+    - name: Launch active workspace background daemon worker (macOS via tmux)
+      shell: "tmux kill-session -t hermes_ws || true && tmux new-session -d -s hermes_ws '/usr/local/bin/hermes workspace start'"
+      when:
+        - ansible_os_family == 'Darwin'
+        - hermes_start_agents | default(false) | bool
+      become: false
+      tags:
+        - hermes_agents

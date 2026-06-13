@@ -1,0 +1,30 @@
+# vars.yml
+
+
+# --- System & Deployment Configurations ---
+hermes_user: "hermes"
+hermes_home: "/home/hermes"
+ollama_model: "gemma4:e2b-mlx"
+ollama_base_url: "http://127.0.0.1:11434/v1"
+hermes_start_agents: false
+
+# --- Firecrawl behavior ---
+firecrawl_init_all: true
+firecrawl_verify_install: true
+firecrawl_use_browser_auth: false
+
+# --- Private Integrations & API Credentials ---
+telegram_bot_token: ""
+firecrawl_api_key: ""
+
+# --- Telegram (numeric IDs from @userinfobot or similar) ---
+telegram_chat_id: ""
+telegram_allowed_users:
+  - ""  # Recipient A User ID
+
+# --- Investment Tracker Stocks ---
+tracked_stocks:
+  - "VOO"
+  - "QQQM"
+  - "SCHD"
+  - "SMH"
