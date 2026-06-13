@@ -1,15 +1,15 @@
 ---
 - name: Deploy Hermes Daily Morning Digest (News + Investment HTML)
   hosts: all
-  become: true
+  become: false
   vars_files:
     - vars.yml
 
   tasks:
     - name: Establish operational workspace path variables
       set_fact:
-        target_home: "{{ hermes_home if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['HOME'] }}"
-        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['USER'] }}"
+        target_home: "{{ hermes_home if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['HOME'] | default(lookup('env', 'HOME'))) }}"
+        target_user: "{{ hermes_user if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['USER'] | default(ansible_user_id)) }}"
 
     - name: Create dedicated digest outputs directory
       file:
@@ -18,6 +18,7 @@
         owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0755'
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
     - name: Create and inject Hermes Daily Morning Digest Skill
       copy:
@@ -50,6 +51,7 @@
           6. Deliver the digest to every user ID in the `TELEGRAM_SEND_USERS` environment variable (comma-separated numeric IDs):
              - Attach `digest/daily_digest.html` as a document using the `MEDIA:` prefix
              - Send each recipient a short plain-text summary noting that the full Bootstrap HTML report is attached
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
     - name: Inject Hermes environment secrets from vars
       template:
@@ -58,12 +60,14 @@
         mode: '0600'
         owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
     - name: Trigger Hermes workspace synchronization
       command: /usr/local/bin/hermes workspace sync
       environment:
         HOME: "{{ target_home }}"
-      become_user: "{{ target_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
       failed_when: false
 
     # --- 6:00 AM Daily Digest Cron ---
@@ -75,6 +79,7 @@
         user: "{{ hermes_user }}"
         job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run daily-morning-digest"
       when: ansible_facts['os_family'] == 'Debian'
+      become: true
 
     - name: Configure 6 AM Daily Digest LaunchAgent (macOS)
       template:
