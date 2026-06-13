@@ -10,7 +10,7 @@
     - name: Establish deployment path variables
       set_fact:
         target_home: "{{ hermes_home if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['HOME'] }}"
-        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['USER'] }}"
         is_debian: "{{ ansible_facts['os_family'] == 'Debian' }}"
 
     - name: Set Hermes PATH prefix for user-scoped installs
@@ -102,7 +102,7 @@
       changed_when: false
       failed_when: false
       become: "{{ is_debian | bool }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if is_debian | bool else omit }}"
 
     - name: Record Hermes CLI path when already installed
       set_fact:
@@ -115,7 +115,7 @@
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
       become: "{{ is_debian | bool }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if is_debian | bool else omit }}"
       when: hermes_cmd is not defined
 
     - name: Look up Hermes CLI on PATH after install
@@ -129,7 +129,7 @@
       changed_when: false
       failed_when: false
       become: "{{ is_debian | bool }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if is_debian | bool else omit }}"
       when: hermes_cmd is not defined
 
     - name: Record Hermes CLI path after install
@@ -156,7 +156,7 @@
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
       become: "{{ is_debian | bool }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if is_debian | bool else omit }}"
 
     # --- Step 3: Install Firecrawl Core Dependencies ---
     - name: Install native Firecrawl scraping dependencies inside Node workspace
@@ -165,7 +165,7 @@
         path: "{{ target_home }}/.hermes/workspace"
         state: present
       become: "{{ is_debian | bool }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if is_debian | bool else omit }}"
       when: firecrawl_init_all | default(true) | bool
 
     - name: Verify Firecrawl npm package installation
@@ -176,7 +176,7 @@
       changed_when: false
       failed_when: firecrawl_npm_check.rc != 0
       become: "{{ is_debian | bool }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if is_debian | bool else omit }}"
       when: firecrawl_verify_install | default(true) | bool
 
     # --- Step 4: Map Environment Variable Structure ---
@@ -186,7 +186,7 @@
         dest: "{{ target_home }}/.hermes/config.yaml"
         mode: '0644'
       become: "{{ is_debian | bool }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if is_debian | bool else omit }}"
 
     - name: Inject application keys into operational environment secrets (.env)
       template:
@@ -194,7 +194,7 @@
         dest: "{{ target_home }}/.hermes/.env"
         mode: '0600'
       become: "{{ is_debian | bool }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if is_debian | bool else omit }}"
 
     # --- Step 5: Start Daemon/Background Workers ---
     - name: Configure and mount Linux systemd service worker (Linux / WSL2)

@@ -10,7 +10,7 @@
     - name: Establish operational workspace path variables
       set_fact:
         target_home: "{{ hermes_home if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['HOME'] }}"
-        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['USER'] }}"
 
     - name: Create dedicated Investment outputs directory
       file:
@@ -68,7 +68,7 @@
       command: /usr/local/bin/hermes workspace sync
       environment:
         HOME: "{{ target_home }}"
-      become_user: "{{ target_user }}"
+      become_user: "{{ target_user if ansible_facts['os_family'] == 'Debian' else omit }}"
       failed_when: false
 
     # --- Midnight System Automation Config (OS-Independent) ---
