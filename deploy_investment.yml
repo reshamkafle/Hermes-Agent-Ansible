@@ -9,22 +9,22 @@
     # Set the path dynamically based on whether it's macOS or Linux/WSL2
     - name: Establish operational workspace path variables
       set_fact:
-        target_home: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
-        target_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        target_home: "{{ hermes_home if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['HOME'] }}"
+        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
 
     - name: Create dedicated Investment outputs directory
       file:
         path: "{{ target_home }}/.hermes/workspace/investment"
         state: directory
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0755'
 
     - name: Template active stock watchlist file into the workspace
       copy:
         dest: "{{ target_home }}/.hermes/workspace/investment/watchlist.txt"
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0644'
         content: |
           # Watchlist managed by Ansible
@@ -35,8 +35,8 @@
     - name: Create and inject Hermes Custom Investment Skill
       copy:
         dest: "{{ target_home }}/.hermes/workspace/skills/investment.md"
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0644'
         content: |
           ---
@@ -61,8 +61,8 @@
         src: "{{ playbook_dir }}/templates/hermes.env.j2"
         dest: "{{ target_home }}/.hermes/.env"
         mode: '0600'
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
 
     - name: Trigger Hermes workspace synchronization
       command: /usr/local/bin/hermes workspace sync
@@ -79,11 +79,11 @@
         hour: "0"
         user: "{{ hermes_user }}"
         job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run stock-investment-tracker"
-      when: ansible_os_family == 'Debian'
+      when: ansible_facts['os_family'] == 'Debian'
 
     - name: Configure Midnight Automation LaunchAgent (macOS)
       template:
         src: "{{ playbook_dir }}/templates/com.hermes.investment.plist.j2"
         dest: "{{ target_home }}/Library/LaunchAgents/com.hermes.investment.plist"
         mode: '0644'
-      when: ansible_os_family == 'Darwin'
+      when: ansible_facts['os_family'] == 'Darwin'

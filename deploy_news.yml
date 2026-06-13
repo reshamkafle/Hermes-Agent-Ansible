@@ -9,22 +9,22 @@
     # Set workspace and home directory variables dynamically across hosts
     - name: Establish operational workspace path variables
       set_fact:
-        target_home: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
-        target_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        target_home: "{{ hermes_home if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['HOME'] }}"
+        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
 
     - name: Create dedicated Workspace Skill Directory if it doesn't exist
       file:
         path: "{{ target_home }}/.hermes/workspace/skills"
         state: directory
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0755'
 
     - name: Create and inject Hermes IT & AI Intelligence News Skill
       copy:
         dest: "{{ target_home }}/.hermes/workspace/skills/tech_news.md"
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0644'
         content: |
           ---
@@ -54,8 +54,8 @@
         src: "{{ playbook_dir }}/templates/hermes.env.j2"
         dest: "{{ target_home }}/.hermes/.env"
         mode: '0600'
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
 
     - name: Sync changes into active workspace architecture
       command: /usr/local/bin/hermes workspace sync
@@ -72,11 +72,11 @@
         hour: "5"
         user: "{{ hermes_user }}"
         job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run tech-news-intelligence"
-      when: ansible_os_family == 'Debian'
+      when: ansible_facts['os_family'] == 'Debian'
 
     - name: Configure Morning Automation LaunchAgent (macOS)
       template:
         src: "{{ playbook_dir }}/templates/com.hermes.technews.plist.j2"
         dest: "{{ target_home }}/Library/LaunchAgents/com.hermes.technews.plist"
         mode: '0644'
-      when: ansible_os_family == 'Darwin'
+      when: ansible_facts['os_family'] == 'Darwin'

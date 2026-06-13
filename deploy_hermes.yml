@@ -1,15 +1,26 @@
 ---
 - name: Cross-Platform Hermes Agent Workspace Deployment
   hosts: all
+  gather_facts: true
   become: true
   vars_files:
     - vars.yml
 
   tasks:
+    - name: Establish deployment path variables
+      set_fact:
+        target_home: "{{ hermes_home if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['HOME'] }}"
+        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        is_debian: "{{ ansible_facts['os_family'] == 'Debian' }}"
+
+    - name: Set Hermes PATH prefix for user-scoped installs
+      set_fact:
+        hermes_path_prefix: "{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+
     - name: Detect and validate operating system family
       fail:
         msg: "This target OS system is not supported by this playbook. Use Ubuntu, Debian, macOS, or WSL2."
-      when: ansible_os_family != 'Debian' and ansible_os_family != 'Darwin'
+      when: ansible_facts['os_family'] not in ['Debian', 'Darwin']
 
     # --- System Package Management ---
     - name: Install required baseline dependencies (Linux / WSL2)
@@ -17,13 +28,13 @@
         name: [curl, git, python3-pip, python3-venv, nodejs, npm, tmux]
         state: present
         update_cache: yes
-      when: ansible_os_family == 'Debian'
+      when: is_debian | bool
 
     - name: Install required baseline dependencies (macOS via Homebrew)
       homebrew:
         name: [curl, git, python, node, tmux]
         state: present
-      when: ansible_os_family == 'Darwin'
+      when: not is_debian | bool
       become: false
 
     - name: Create execution system user for Hermes Agent
@@ -31,23 +42,30 @@
         name: "{{ hermes_user }}"
         shell: /bin/bash
         create_home: yes
-      when: ansible_os_family == 'Debian'
+      when: is_debian | bool
 
     # --- Step 1: Install & Set Up Ollama Engine ---
     - name: Check if Ollama engine is present
       stat:
-        path: "{{ '/usr/local/bin/ollama' if ansible_os_family == 'Debian' else '/usr/local/bin/ollama' }}"
-      register: ollama_bin
+        path: "{{ item }}"
+      loop:
+        - /opt/homebrew/bin/ollama
+        - /usr/local/bin/ollama
+      register: ollama_bin_candidates
+
+    - name: Set Ollama install status
+      set_fact:
+        ollama_installed: "{{ ollama_bin_candidates.results | selectattr('stat.exists') | list | length > 0 }}"
 
     - name: Install Ollama via official web installer (Linux / WSL2)
       shell: curl -fsSL https://ollama.com/install.sh | sh
-      when: ansible_os_family == 'Debian' and not ollama_bin.stat.exists
+      when: is_debian | bool and not ollama_installed | bool
 
     - name: Install Ollama via Homebrew Cask (macOS)
       homebrew_cask:
         name: ollama
         state: present
-      when: ansible_os_family == 'Darwin' and not ollama_bin.stat.exists
+      when: not is_debian | bool and not ollama_installed | bool
       become: false
 
     - name: Manage Ollama Daemon Lifecycle (Linux / WSL2 systemd)
@@ -55,65 +73,128 @@
         name: ollama
         state: started
         enabled: yes
-      when: ansible_os_family == 'Debian'
+      when: is_debian | bool
 
     - name: Pull local LLM inference model via Ollama
       command: "ollama pull {{ ollama_model }}"
+      environment:
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
       async: 1800
       poll: 15
+      become: false
+      when: not is_debian | bool
+
+    - name: Pull local LLM inference model via Ollama (Linux / WSL2)
+      command: "ollama pull {{ ollama_model }}"
+      async: 1800
+      poll: 15
+      when: is_debian | bool
 
     # --- Step 2: Install Hermes Core CLI & Workspace ---
-    - name: Check for pre-existing Hermes binary
-      stat:
-        path: /usr/local/bin/hermes
-      register: hermes_bin
+    - name: Look up Hermes CLI on PATH
+      shell: |
+        export HOME="{{ target_home }}"
+        export PATH="{{ hermes_path_prefix }}:${PATH}"
+        command -v hermes
+      args:
+        executable: /bin/bash
+      register: hermes_lookup
+      changed_when: false
+      failed_when: false
+      become: "{{ is_debian | bool }}"
+      become_user: "{{ target_user }}"
+
+    - name: Record Hermes CLI path when already installed
+      set_fact:
+        hermes_cmd: "{{ hermes_lookup.stdout | trim }}"
+      when: hermes_lookup.rc == 0 and hermes_lookup.stdout | trim | length > 0
 
     - name: Fetch and run core Hermes binary installer
       shell: "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"
       environment:
-        HOME: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
-      become_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-      when: not hermes_bin.stat.exists
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+      become: "{{ is_debian | bool }}"
+      become_user: "{{ target_user }}"
+      when: hermes_cmd is not defined
+
+    - name: Look up Hermes CLI on PATH after install
+      shell: |
+        export HOME="{{ target_home }}"
+        export PATH="{{ hermes_path_prefix }}:${PATH}"
+        command -v hermes
+      args:
+        executable: /bin/bash
+      register: hermes_lookup_after_install
+      changed_when: false
+      failed_when: false
+      become: "{{ is_debian | bool }}"
+      become_user: "{{ target_user }}"
+      when: hermes_cmd is not defined
+
+    - name: Record Hermes CLI path after install
+      set_fact:
+        hermes_cmd: "{{ hermes_lookup_after_install.stdout | trim }}"
+      when:
+        - hermes_cmd is not defined
+        - hermes_lookup_after_install.rc == 0
+        - hermes_lookup_after_install.stdout | trim | length > 0
+
+    - name: Verify Hermes CLI is available
+      fail:
+        msg: >-
+          Hermes CLI not found after install. Checked PATH with HOME={{ target_home }}
+          and prefix {{ hermes_path_prefix }}.
+      when: hermes_cmd is not defined or hermes_cmd | length == 0
 
     - name: Initialize active Hermes Workspace ecosystem
-      command: /usr/local/bin/hermes workspace init
+      shell: "{{ hermes_cmd }} workspace init"
       args:
-        creates: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/workspace"
+        creates: "{{ target_home }}/.hermes/workspace"
+        executable: /bin/bash
       environment:
-        HOME: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
-      become_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+      become: "{{ is_debian | bool }}"
+      become_user: "{{ target_user }}"
 
     # --- Step 3: Install Firecrawl Core Dependencies ---
     - name: Install native Firecrawl scraping dependencies inside Node workspace
       npm:
         name: "@mendable/firecrawl-js"
-        path: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/workspace"
+        path: "{{ target_home }}/.hermes/workspace"
         state: present
-      become_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+      become: "{{ is_debian | bool }}"
+      become_user: "{{ target_user }}"
       when: firecrawl_init_all | default(true) | bool
 
     - name: Verify Firecrawl npm package installation
       command: npm list @mendable/firecrawl-js
       args:
-        chdir: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/workspace"
+        chdir: "{{ target_home }}/.hermes/workspace"
       register: firecrawl_npm_check
       changed_when: false
       failed_when: firecrawl_npm_check.rc != 0
-      become_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+      become: "{{ is_debian | bool }}"
+      become_user: "{{ target_user }}"
       when: firecrawl_verify_install | default(true) | bool
 
     # --- Step 4: Map Environment Variable Structure ---
     - name: Deploy structured Hermes unified config.yaml
       template:
         src: "{{ playbook_dir }}/templates/hermes.config.yaml.j2"
-        dest: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/config.yaml"
+        dest: "{{ target_home }}/.hermes/config.yaml"
         mode: '0644'
+      become: "{{ is_debian | bool }}"
+      become_user: "{{ target_user }}"
 
     - name: Inject application keys into operational environment secrets (.env)
       template:
         src: "{{ playbook_dir }}/templates/hermes.env.j2"
-        dest: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}/.hermes/.env"
+        dest: "{{ target_home }}/.hermes/.env"
         mode: '0600'
+      become: "{{ is_debian | bool }}"
+      become_user: "{{ target_user }}"
 
     # --- Step 5: Start Daemon/Background Workers ---
     - name: Configure and mount Linux systemd service worker (Linux / WSL2)
@@ -129,13 +210,14 @@
           Type=simple
           User={{ hermes_user }}
           Environment=HOME={{ hermes_home }}
+          Environment=PATH={{ hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin
           WorkingDirectory={{ hermes_home }}/.hermes/workspace
-          ExecStart=/usr/local/bin/hermes workspace start
+          ExecStart={{ hermes_cmd }} workspace start
           Restart=always
 
           [Install]
           WantedBy=multi-user.target
-      when: ansible_os_family == 'Debian'
+      when: is_debian | bool
 
     - name: Launch Hermes background environment via systemd (Linux / WSL2)
       systemd:
@@ -144,15 +226,15 @@
         state: restarted
         enabled: yes
       when:
-        - ansible_os_family == 'Debian'
+        - is_debian | bool
         - hermes_start_agents | default(false) | bool
       tags:
         - hermes_agents
 
     - name: Launch active workspace background daemon worker (macOS via tmux)
-      shell: "tmux kill-session -t hermes_ws || true && tmux new-session -d -s hermes_ws '/usr/local/bin/hermes workspace start'"
+      shell: "tmux kill-session -t hermes_ws || true && tmux new-session -d -s hermes_ws '{{ hermes_cmd }} workspace start'"
       when:
-        - ansible_os_family == 'Darwin'
+        - not is_debian | bool
         - hermes_start_agents | default(false) | bool
       become: false
       tags:

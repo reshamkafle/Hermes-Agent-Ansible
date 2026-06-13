@@ -8,22 +8,22 @@
   tasks:
     - name: Establish operational workspace path variables
       set_fact:
-        target_home: "{{ hermes_home if ansible_os_family == 'Debian' else ansible_env.HOME }}"
-        target_user: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        target_home: "{{ hermes_home if ansible_facts['os_family'] == 'Debian' else ansible_facts['env']['HOME'] }}"
+        target_user: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
 
     - name: Create dedicated digest outputs directory
       file:
         path: "{{ target_home }}/.hermes/workspace/digest"
         state: directory
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0755'
 
     - name: Create and inject Hermes Daily Morning Digest Skill
       copy:
         dest: "{{ target_home }}/.hermes/workspace/skills/daily_digest.md"
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         mode: '0644'
         content: |
           ---
@@ -56,8 +56,8 @@
         src: "{{ playbook_dir }}/templates/hermes.env.j2"
         dest: "{{ target_home }}/.hermes/.env"
         mode: '0600'
-        owner: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
-        group: "{{ hermes_user if ansible_os_family == 'Debian' else omit }}"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
 
     - name: Trigger Hermes workspace synchronization
       command: /usr/local/bin/hermes workspace sync
@@ -74,17 +74,17 @@
         hour: "6"
         user: "{{ hermes_user }}"
         job: "HOME={{ target_home }} /usr/local/bin/hermes workspace run daily-morning-digest"
-      when: ansible_os_family == 'Debian'
+      when: ansible_facts['os_family'] == 'Debian'
 
     - name: Configure 6 AM Daily Digest LaunchAgent (macOS)
       template:
         src: "{{ playbook_dir }}/templates/com.hermes.dailydigest.plist.j2"
         dest: "{{ target_home }}/Library/LaunchAgents/com.hermes.dailydigest.plist"
         mode: '0644'
-      when: ansible_os_family == 'Darwin'
+      when: ansible_facts['os_family'] == 'Darwin'
 
     - name: Load 6 AM Daily Digest LaunchAgent (macOS)
       shell: launchctl load -w "{{ target_home }}/Library/LaunchAgents/com.hermes.dailydigest.plist"
-      when: ansible_os_family == 'Darwin'
+      when: ansible_facts['os_family'] == 'Darwin'
       become: false
       failed_when: false
