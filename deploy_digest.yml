@@ -24,6 +24,15 @@
         mode: '0755'
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
+    - name: Create daily-morning-digest skill directory
+      file:
+        path: "{{ target_home }}/.hermes/skills/daily-morning-digest"
+        state: directory
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        mode: '0755'
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+
     - name: Remove legacy flat daily digest skill files (Hermes resolves skill-name/SKILL.md only)
       file:
         path: "{{ item }}"

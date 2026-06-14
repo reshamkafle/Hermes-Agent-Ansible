@@ -47,6 +47,15 @@
         - "{{ target_home }}/.hermes/skills/stock-investment-tracker.md"
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
+    - name: Create stock-investment-tracker skill directory
+      file:
+        path: "{{ target_home }}/.hermes/skills/stock-investment-tracker"
+        state: directory
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        mode: '0755'
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+
     - name: Create and inject Hermes Custom Investment Skill
       copy:
         dest: "{{ target_home }}/.hermes/skills/stock-investment-tracker/SKILL.md"

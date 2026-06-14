@@ -16,9 +16,9 @@
     - name: Resolve Hermes CLI path
       import_tasks: tasks/resolve_hermes_cmd.yml
 
-    - name: Create dedicated Hermes skills directory if it doesn't exist
+    - name: Create tech-news-intelligence skill directory
       file:
-        path: "{{ target_home }}/.hermes/skills"
+        path: "{{ target_home }}/.hermes/skills/tech-news-intelligence"
         state: directory
         owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
         group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
