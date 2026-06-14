@@ -44,8 +44,10 @@ To skip the gateway during deploy: set `hermes_start_agents: false` in `vars.yml
 If you already deployed and only need the gateway (or it stopped and you want to restart it):
 
 ```bash
-chmod +x start_gateway.sh && ./start_gateway.sh
+chmod +x start_gateway.sh scripts/diagnose_gateway.sh && ./start_gateway.sh
 ```
+
+`start_gateway.sh` runs Ansible to restart the gateway, then prints a **diagnostics report** automatically. You may also get a Telegram message *"Gateway shutting down — Your current task will be interrupted"* during the restart — that is expected (the old process stops before the new one starts).
 
 Then check it:
 
@@ -62,8 +64,49 @@ Remote host:
 
 ```bash
 INVENTORY=inventory.ini ./start_gateway.sh
-# then SSH in and check launchctl (macOS) or systemctl (Linux)
+# then SSH in and run: bash scripts/diagnose_gateway.sh vars.yml
 ```
+
+## Diagnose gateway
+
+When the gateway fails to start or you want a quick health check, run:
+
+```bash
+chmod +x scripts/diagnose_gateway.sh
+bash scripts/diagnose_gateway.sh vars.yml
+```
+
+This prints a report like:
+
+```
+=== Hermes gateway diagnostics ===
+Ollama: OK at http://127.0.0.1:11434/v1
+macOS GUI session (Aqua): OK — LaunchAgent can load in this session.
+Gateway process: running (`hermes gateway run`).
+...
+Recent gateway stderr (last 25 lines):
+...
+=== End diagnostics ===
+```
+
+**What it checks**
+
+| Check | macOS | Linux |
+|-------|-------|-------|
+| Ollama reachable at `ollama_base_url` | yes | yes |
+| Gateway process / service running | `pgrep` for `hermes gateway run` | `systemctl is-active hermes-workspace` |
+| GUI session (Aqua) for LaunchAgent | yes | — |
+| Recent logs | `~/.hermes/logs/gateway.stderr.log` | `journalctl -u hermes-workspace` |
+
+Exit code `0` = healthy; `1` = at least one check failed (with fix hints in the output).
+
+`./start_gateway.sh` runs this script automatically after Ansible on localhost. Ansible also writes the same report to `~/.hermes/logs/gateway-diagnostics.txt` during `start_gateway.yml`.
+
+**Common causes when diagnostics fail**
+
+- **Ollama not running** — config points at `ollama_base_url` (default `http://127.0.0.1:11434/v1`). Start Ollama, then `ollama pull <ollama_model>`.
+- **Gateway crash on startup** — read the stderr tail in the report or `~/.hermes/logs/gateway.stderr.log`.
+- **Not logged into the Mac GUI** — `com.hermes.gateway` uses `LimitLoadToSessionType Aqua`; SSH-only sessions cannot load the LaunchAgent.
 
 
 ## Playbooks
@@ -154,7 +197,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 
 | Problem | Fix |
 |---------|-----|
-| Gateway not running (macOS) | Ensure `~/.hermes/logs/` exists · check `launchctl print gui/$(id -u)/com.hermes.gateway` · logs: `~/.hermes/logs/gateway.stderr.log` · restart: `./start_gateway.sh` |
+| Gateway not running (macOS) | Run `bash scripts/diagnose_gateway.sh vars.yml` · ensure `~/.hermes/logs/` exists · check `launchctl print gui/$(id -u)/com.hermes.gateway` · logs: `~/.hermes/logs/gateway.stderr.log` · restart: `./start_gateway.sh` |
 | Hermes CLI not found | Run `deploy_hermes.yml` first; check `~/.local/bin/hermes` |
 | Skill playbook fails | Core deploy must run first — use `deploy_local.sh` / `deploy_all.sh` |
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
@@ -167,5 +210,6 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 ```
 deploy_hermes.yml          deploy_investment.yml    deploy_news.yml    deploy_digest.yml
 deploy_local.sh            deploy_all.sh            start_gateway.sh   start_gateway.yml   test_telegram.sh   test_hermes_daily_digest.sh
-tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    templates/*.j2    vars.yml (from vars.example..yml)
+scripts/diagnose_gateway.sh    scripts/read_hermes_start_agents.sh
+tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    tasks/diagnose_hermes_gateway.yml    templates/*.j2    vars.yml (from vars.example..yml)
 ```
