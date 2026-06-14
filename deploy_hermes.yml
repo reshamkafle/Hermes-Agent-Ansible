@@ -14,7 +14,16 @@
 
     - name: Set Hermes PATH prefix for user-scoped installs
       set_fact:
-        hermes_path_prefix: "{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+        hermes_path_prefix: "{{ target_home }}/.lmstudio/bin:{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+
+    - name: Resolve OS-specific LM Studio model identifier
+      set_fact:
+        lmstudio_effective_model: >-
+          {{
+            lmstudio_model_linux | default('lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M')
+            if (ansible_facts['os_family'] == 'Debian')
+            else lmstudio_model
+          }}
 
     - name: Detect and validate operating system family
       fail:
@@ -24,7 +33,7 @@
     # --- System Package Management ---
     - name: Install required baseline dependencies (Linux / WSL2)
       apt:
-        name: [curl, git, python3-pip, python3-venv, nodejs, npm]
+        name: [curl, git, python3-pip, python3-venv, nodejs, npm, libatomic1]
         state: present
         update_cache: yes
       when: ansible_facts['os_family'] == 'Debian'
@@ -45,54 +54,133 @@
       when: ansible_facts['os_family'] == 'Debian'
       become: true
 
-    # --- Step 1: Install & Set Up Ollama Engine ---
-    - name: Check if Ollama engine is present
-      stat:
-        path: "{{ item }}"
-      loop:
-        - /opt/homebrew/bin/ollama
-        - /usr/local/bin/ollama
-      register: ollama_bin_candidates
+    # --- Step 1: Install & Set Up LM Studio (llmster) ---
+    - name: Read LM Studio home pointer when present
+      slurp:
+        src: "{{ target_home }}/.lmstudio-home-pointer"
+      register: lmstudio_home_pointer
+      failed_when: false
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
-    - name: Set Ollama install status
+    - name: Set LM Studio home directory
       set_fact:
-        ollama_installed: "{{ ollama_bin_candidates.results | selectattr('stat.exists') | list | length > 0 }}"
+        lmstudio_home: >-
+          {{
+            (lmstudio_home_pointer.content | b64decode | trim)
+            if (lmstudio_home_pointer is defined and lmstudio_home_pointer.content is defined)
+            else (target_home ~ '/.lmstudio')
+          }}
 
-    - name: Install Ollama via official web installer (Linux / WSL2)
-      shell: curl -fsSL https://ollama.com/install.sh | sh
-      when: ansible_facts['os_family'] == 'Debian' and not ollama_installed | bool
-      become: true
+    - name: Check if LM Studio CLI (lms) is present
+      stat:
+        path: "{{ lmstudio_home }}/bin/lms"
+      register: lms_bin_stat
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
-    - name: Install Ollama via Homebrew Cask (macOS)
-      homebrew_cask:
-        name: ollama
-        state: present
-      when: ansible_facts['os_family'] != 'Debian' and not ollama_installed | bool
-      become: false
-
-    - name: Manage Ollama Daemon Lifecycle (Linux / WSL2 systemd)
-      systemd:
-        name: ollama
-        state: started
-        enabled: yes
-      when: ansible_facts['os_family'] == 'Debian'
-      become: true
-
-    - name: Pull local LLM inference model via Ollama
-      command: "ollama pull {{ ollama_model }}"
+    - name: Install LM Studio via official installer (llmster)
+      shell: curl -fsSL https://lmstudio.ai/install.sh | bash
       environment:
+        HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-      async: 1800
-      poll: 15
+      when: not lms_bin_stat.stat.exists | bool
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+    - name: Re-check LM Studio CLI after install
+      stat:
+        path: "{{ lmstudio_home }}/bin/lms"
+      register: lms_bin_stat_after_install
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+    - name: Require LM Studio CLI after install
+      fail:
+        msg: >-
+          LM Studio CLI not found at {{ lmstudio_home }}/bin/lms after install.
+          Re-run the installer manually: curl -fsSL https://lmstudio.ai/install.sh | bash
+      when: not lms_bin_stat_after_install.stat.exists | bool
+
+    - name: Start LM Studio headless daemon
+      command: "{{ lmstudio_home }}/bin/lms daemon up"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+      changed_when: false
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+    - name: Download LM Studio model (macOS — MLX)
+      command: "{{ lmstudio_home }}/bin/lms get {{ lmstudio_effective_model }} --mlx"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+      async: 3600
+      poll: 30
       become: false
       when: ansible_facts['os_family'] != 'Debian'
 
-    - name: Pull local LLM inference model via Ollama (Linux / WSL2)
-      command: "ollama pull {{ ollama_model }}"
-      async: 1800
-      poll: 15
+    - name: Download LM Studio model (Linux / WSL2 — GGUF)
+      command: "{{ lmstudio_home }}/bin/lms get {{ lmstudio_effective_model }} --gguf"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+      async: 3600
+      poll: 30
       when: ansible_facts['os_family'] == 'Debian'
       become: true
+      become_user: "{{ target_user }}"
+
+    - name: Load LM Studio model into memory (macOS)
+      command: "{{ lmstudio_home }}/bin/lms load {{ lmstudio_effective_model }}"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+      when:
+        - ansible_facts['os_family'] != 'Debian'
+        - lmstudio_load_model | default(true) | bool
+      become: false
+
+    - name: Load LM Studio model into memory (Linux / WSL2)
+      command: "{{ lmstudio_home }}/bin/lms load {{ lmstudio_effective_model }}"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+      when:
+        - ansible_facts['os_family'] == 'Debian'
+        - lmstudio_load_model | default(true) | bool
+      become: true
+      become_user: "{{ target_user }}"
+
+    - name: Start LM Studio API server (macOS)
+      command: "{{ lmstudio_home }}/bin/lms server start --port {{ lmstudio_server_port | default(1234) }}"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+      when:
+        - ansible_facts['os_family'] != 'Debian'
+        - lmstudio_start_server | default(true) | bool
+      become: false
+      changed_when: false
+      failed_when: false
+
+    - name: Configure LM Studio systemd service (Linux / WSL2)
+      template:
+        src: "{{ playbook_dir }}/templates/llmster.service.j2"
+        dest: /etc/systemd/system/llmster.service
+        mode: '0644'
+      when:
+        - ansible_facts['os_family'] == 'Debian'
+        - lmstudio_start_server | default(true) | bool
+      become: true
+      notify: Reload systemd and start llmster
 
     # --- Step 2: Install Hermes Core CLI & Workspace ---
     - name: Resolve Hermes CLI path (install if missing)
@@ -156,13 +244,13 @@
         content: |
           [Unit]
           Description=Hermes Agent Gateway Daemon
-          After=network.target ollama.service
+          After=network.target llmster.service
 
           [Service]
           Type=simple
           User={{ hermes_user }}
           Environment=HOME={{ hermes_home }}
-          Environment=PATH={{ hermes_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
+          Environment=PATH={{ hermes_home }}/.lmstudio/bin:{{ hermes_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
           WorkingDirectory={{ hermes_home }}/.hermes
           ExecStart={{ target_home }}/.hermes/bin/hermes-run.sh gateway run
           Restart=always
@@ -175,3 +263,13 @@
     - name: Start Hermes gateway daemon
       import_tasks: tasks/start_hermes_gateway.yml
       when: hermes_start_agents | default(true) | bool
+
+  handlers:
+    - name: Reload systemd and start llmster
+      systemd:
+        daemon_reload: yes
+        name: llmster
+        state: started
+        enabled: yes
+      when: ansible_facts['os_family'] == 'Debian'
+      become: true

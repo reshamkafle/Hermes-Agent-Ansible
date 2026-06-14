@@ -14,7 +14,16 @@
 
     - name: Set Hermes PATH prefix for user-scoped installs
       set_fact:
-        hermes_path_prefix: "{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+        hermes_path_prefix: "{{ target_home }}/.lmstudio/bin:{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+
+    - name: Resolve OS-specific LM Studio model identifier
+      set_fact:
+        lmstudio_effective_model: >-
+          {{
+            lmstudio_model_linux | default('lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M')
+            if (ansible_facts['os_family'] == 'Debian')
+            else lmstudio_model
+          }}
 
     - name: Resolve Hermes CLI path
       import_tasks: tasks/resolve_hermes_cmd.yml

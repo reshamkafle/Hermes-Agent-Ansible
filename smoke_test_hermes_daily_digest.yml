@@ -27,6 +27,15 @@
         target_home: "{{ ansible_facts['env']['HOME'] | default(lookup('env', 'HOME')) }}"
         target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
 
+    - name: Resolve OS-specific LM Studio model identifier
+      set_fact:
+        lmstudio_effective_model: >-
+          {{
+            lmstudio_model_linux | default('lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M')
+            if (ansible_facts['os_family'] == 'Debian')
+            else lmstudio_model
+          }}
+
     - name: Validate credentials required for digest skills
       vars:
         hermes_telegram_recipient_ids: >-
@@ -101,23 +110,25 @@
           - hermes_config_stat.stat.size | int > 0
         fail_msg: >-
           {{ target_home }}/.hermes/config.yaml is missing or empty. Run
-          deploy_hermes.yml or ./deploy_local.sh to deploy the Ollama provider config.
+          deploy_hermes.yml or ./deploy_local.sh to deploy the LM Studio provider config.
 
-    - name: Verify Ollama endpoint is reachable
+    - name: Verify LM Studio endpoint is reachable
       uri:
-        url: "{{ ollama_base_url | regex_replace('/v1/?$', '') }}/api/tags"
+        url: "{{ lmstudio_base_url | regex_replace('/?$', '') }}/models"
         method: GET
         status_code: 200
-      register: ollama_health
+        headers: "{{ {'Authorization': 'Bearer ' + (hermes_model_api_key | default('lm-studio', true)) } if (hermes_model_api_key | default('') | trim | length > 0) else omit }}"
+      register: lmstudio_health
       failed_when: false
 
-    - name: Require Ollama to be running for digest smoke test
+    - name: Require LM Studio to be running for digest smoke test
       assert:
         that:
-          - ollama_health.status == 200
+          - lmstudio_health.status == 200
         fail_msg: >-
-          Ollama is not reachable at {{ ollama_base_url }}. Start Ollama and run
-          `ollama pull {{ ollama_model }}` before the smoke test.
+          LM Studio is not reachable at {{ lmstudio_base_url }}. Run
+          `lms daemon up`, `lms server start`, and `lms get {{ lmstudio_effective_model | default(lmstudio_model) }}`
+          before the smoke test.
 
     - name: Ensure digest output directory exists
       file:
@@ -140,8 +151,8 @@
           - hermes_digest_run.rc == 0
         fail_msg: >-
           Hermes daily-morning-digest failed (rc={{ hermes_digest_run.rc }}).
-          Ensure ~/.hermes/config.yaml defines model.provider/model.base_url for Ollama
-          and Ollama is running. Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
+          Ensure ~/.hermes/config.yaml defines model.provider/model.base_url for LM Studio
+          and the LM Studio server is running. Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
 
     - name: Verify combined digest HTML was generated
       stat:

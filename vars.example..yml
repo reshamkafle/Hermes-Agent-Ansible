@@ -4,11 +4,20 @@
 # --- System & Deployment Configurations ---
 hermes_user: "hermes"
 hermes_home: "/home/hermes"
-ollama_model: "gemma4:e2b-mlx"
-ollama_base_url: "http://127.0.0.1:11434/v1"
-# Hermes model routing (~/.hermes/config.yaml). Local Ollama uses provider "custom".
+
+# LM Studio model (macOS / Apple Silicon — MLX). Used as model.default on Darwin.
+lmstudio_model: "lmstudio-community/gemma-4-E2B-it-MLX-4bit"
+# Linux / WSL2 GGUF fallback (MLX does not run on Linux).
+lmstudio_model_linux: "lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M"
+lmstudio_base_url: "http://127.0.0.1:1234/v1"
+lmstudio_server_port: 1234
+lmstudio_load_model: true
+lmstudio_start_server: true
+
+# Hermes model routing (~/.hermes/config.yaml). LM Studio uses OpenAI-compat provider "custom".
 hermes_model_provider: "custom"
-hermes_model_api_key: ""
+# LM Studio API token when Require Authentication is on; use "lm-studio" when auth is off.
+hermes_model_api_key: "lm-studio"
 hermes_start_agents: true
 
 # --- Firecrawl behavior ---

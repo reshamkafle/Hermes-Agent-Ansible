@@ -1,0 +1,19 @@
+[Unit]
+Description=LM Studio headless API server (llmster)
+After=network.target
+
+[Service]
+Type=simple
+User={{ hermes_user }}
+Environment=HOME={{ hermes_home }}
+Environment=PATH={{ hermes_home }}/.lmstudio/bin:{{ hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin
+{% if hermes_model_api_key | default('') | trim | length > 0 %}
+Environment=LM_API_TOKEN={{ hermes_model_api_key }}
+{% endif %}
+ExecStartPre=-{{ hermes_home }}/.lmstudio/bin/lms daemon up
+ExecStart={{ hermes_home }}/.lmstudio/bin/lms server start --port {{ lmstudio_server_port | default(1234) }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

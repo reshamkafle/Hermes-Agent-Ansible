@@ -141,7 +141,7 @@
       fail:
         msg: >-
           Hermes gateway did not start successfully. See the diagnostic report
-          printed above for likely causes (Ollama down, crash on startup, or
+          printed above for likely causes (LM Studio down, crash on startup, or
           missing macOS GUI session).
   tags:
     - hermes_agents

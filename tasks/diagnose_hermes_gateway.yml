@@ -1,13 +1,14 @@
 ---
 # Print actionable diagnostics when the Hermes gateway fails to start or stay up.
-# Requires: target_home, ollama_base_url, ollama_model
+# Requires: target_home, lmstudio_base_url, lmstudio_effective_model (or lmstudio_model)
 
-- name: Check Ollama endpoint is reachable
+- name: Check LM Studio endpoint is reachable
   uri:
-    url: "{{ ollama_base_url | regex_replace('/v1/?$', '') }}/api/tags"
+    url: "{{ lmstudio_base_url | regex_replace('/?$', '') }}/models"
     method: GET
     status_code: 200
-  register: gateway_diag_ollama
+    headers: "{{ {'Authorization': 'Bearer ' + (hermes_model_api_key | default('lm-studio', true)) } if (hermes_model_api_key | default('') | trim | length > 0) else omit }}"
+  register: gateway_diag_lmstudio
   failed_when: false
   tags:
     - hermes_agents
@@ -90,11 +91,11 @@
   set_fact:
     gateway_diag_report: |
       === Hermes gateway diagnostics ===
-      {% if gateway_diag_ollama.status | default(0) == 200 %}
-      Ollama: OK at {{ ollama_base_url }}
+      {% if gateway_diag_lmstudio.status | default(0) == 200 %}
+      LM Studio: OK at {{ lmstudio_base_url }}
       {% else %}
-      Ollama: NOT reachable at {{ ollama_base_url }}.
-        Fix: Start Ollama first, then run `ollama pull {{ ollama_model }}`.
+      LM Studio: NOT reachable at {{ lmstudio_base_url }}.
+        Fix: Run `lms daemon up`, `lms server start`, then `lms get {{ lmstudio_effective_model | default(lmstudio_model) }}`.
       {% endif %}
       {% if ansible_facts['os_family'] == 'Darwin' %}
       {% if gateway_diag_aqua.rc | default(1) == 0 %}

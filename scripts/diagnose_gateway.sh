@@ -26,21 +26,33 @@ note_issue() {
   ISSUES=$((ISSUES + 1))
 }
 
-OLLAMA_BASE_URL="$(read_yaml_value ollama_base_url)"
-OLLAMA_MODEL="$(read_yaml_value ollama_model)"
-OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434/v1}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-your-model}"
+LMSTUDIO_BASE_URL="$(read_yaml_value lmstudio_base_url)"
+LMSTUDIO_MODEL="$(read_yaml_value lmstudio_model)"
+LMSTUDIO_MODEL_LINUX="$(read_yaml_value lmstudio_model_linux)"
+LMSTUDIO_API_KEY="$(read_yaml_value hermes_model_api_key)"
+LMSTUDIO_BASE_URL="${LMSTUDIO_BASE_URL:-http://127.0.0.1:1234/v1}"
+LMSTUDIO_MODEL="${LMSTUDIO_MODEL:-your-model}"
+LMSTUDIO_MODEL_LINUX="${LMSTUDIO_MODEL_LINUX:-lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M}"
 
-OLLAMA_API="${OLLAMA_BASE_URL%/}"
-OLLAMA_API="${OLLAMA_API%/v1}/api/tags"
+if [[ "$(uname -s)" == "Linux" ]]; then
+  LMSTUDIO_EFFECTIVE_MODEL="$LMSTUDIO_MODEL_LINUX"
+else
+  LMSTUDIO_EFFECTIVE_MODEL="$LMSTUDIO_MODEL"
+fi
+
+LMSTUDIO_API="${LMSTUDIO_BASE_URL%/}/models"
+CURL_AUTH=()
+if [[ -n "$LMSTUDIO_API_KEY" ]]; then
+  CURL_AUTH=(-H "Authorization: Bearer ${LMSTUDIO_API_KEY}")
+fi
 
 echo "=== Hermes gateway diagnostics ==="
 
-if curl -fsS --max-time 5 "$OLLAMA_API" >/dev/null 2>&1; then
-  echo "Ollama: OK at ${OLLAMA_BASE_URL}"
+if curl -fsS --max-time 5 "${CURL_AUTH[@]}" "$LMSTUDIO_API" >/dev/null 2>&1; then
+  echo "LM Studio: OK at ${LMSTUDIO_BASE_URL}"
 else
-  echo "Ollama: NOT reachable at ${OLLAMA_BASE_URL}."
-  echo "  Fix: Start Ollama first, then run \`ollama pull ${OLLAMA_MODEL}\`."
+  echo "LM Studio: NOT reachable at ${LMSTUDIO_BASE_URL}."
+  echo "  Fix: Run \`lms daemon up\`, \`lms server start\`, then \`lms get ${LMSTUDIO_EFFECTIVE_MODEL}\`."
   note_issue
 fi
 

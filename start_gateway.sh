@@ -70,7 +70,7 @@ if [[ "$ANSIBLE_RC" -ne 0 || "$DIAG_RC" -ne 0 ]]; then
     echo "    Diagnostics found problems — see the report above."
   fi
   echo "    Common causes:"
-  echo "      - Ollama not running (check ollama_base_url in vars.yml)"
+  echo "      - LM Studio not running (check lmstudio_base_url in vars.yml)"
   echo "      - Gateway crash on startup (~/.hermes/logs/gateway.stderr.log on macOS)"
   echo "      - Not logged into the Mac GUI (LaunchAgent requires an Aqua session)"
   exit 1

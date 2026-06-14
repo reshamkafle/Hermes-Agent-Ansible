@@ -10,7 +10,7 @@
 # Prerequisites:
 #   - ./deploy_local.sh already run (Hermes CLI, skills, ~/.hermes/.env)
 #   - vars.yml with telegram_bot_token, firecrawl_api_key, and recipient IDs
-#   - Ollama running with the model from vars.yml
+#   - LM Studio running with the model from vars.yml
 #
 # Usage:
 #   ./test_hermes_daily_digest.sh

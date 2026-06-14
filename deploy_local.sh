@@ -10,7 +10,7 @@
 # Prerequisites:
 #   - ansible-playbook installed on this machine
 #   - vars.yml configured (copy from vars.example..yml)
-#   - macOS: Homebrew installed (playbooks install Ollama, git, node via brew)
+#   - macOS: Homebrew installed (playbooks install git, node via brew; LM Studio via lmstudio.ai/install.sh)
 #
 # For remote hosts, use deploy_all.sh instead.
 

@@ -1,6 +1,6 @@
 # Hermes Agent Ansible
 
-Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on Linux or macOS — locally or over SSH. Installs Ollama, configures Hermes (Firecrawl + Telegram), and schedules stock, news, and daily digest skills.
+Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on Linux or macOS — locally or over SSH. Installs LM Studio (llmster), configures Hermes (Firecrawl + Telegram), and schedules stock, news, and daily digest skills.
 
 ## Quick start
 
@@ -8,7 +8,7 @@ Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on Linux or 
 
 ```bash
 cp vars.example..yml vars.yml
-# Edit: ollama_model, Telegram IDs, firecrawl_api_key, tracked_stocks
+# Edit: lmstudio_model, hermes_model_api_key, Telegram IDs, firecrawl_api_key, tracked_stocks
 ```
 
 2. **Remote only** — add your server to inventory:
@@ -80,7 +80,7 @@ This prints a report like:
 
 ```
 === Hermes gateway diagnostics ===
-Ollama: OK at http://127.0.0.1:11434/v1
+LM Studio: OK at http://127.0.0.1:1234/v1
 macOS GUI session (Aqua): OK — LaunchAgent can load in this session.
 Gateway process: running (`hermes gateway run`).
 ...
@@ -93,7 +93,7 @@ Recent gateway stderr (last 25 lines):
 
 | Check | macOS | Linux |
 |-------|-------|-------|
-| Ollama reachable at `ollama_base_url` | yes | yes |
+| LM Studio reachable at `lmstudio_base_url` | yes | yes |
 | Gateway process / service running | `pgrep` for `hermes gateway run` | `systemctl is-active hermes-workspace` |
 | GUI session (Aqua) for LaunchAgent | yes | — |
 | Recent logs | `~/.hermes/logs/gateway.stderr.log` | `journalctl -u hermes-workspace` |
@@ -104,7 +104,7 @@ Exit code `0` = healthy; `1` = at least one check failed (with fix hints in the 
 
 **Common causes when diagnostics fail**
 
-- **Ollama not running** — config points at `ollama_base_url` (default `http://127.0.0.1:11434/v1`). Start Ollama, then `ollama pull <ollama_model>`.
+- **LM Studio not running** — config points at `lmstudio_base_url` (default `http://127.0.0.1:1234/v1`). Run `lms daemon up`, `lms server start`, then `lms get <model>`.
 - **Gateway crash on startup** — read the stderr tail in the report or `~/.hermes/logs/gateway.stderr.log`.
 - **Not logged into the Mac GUI** — `com.hermes.gateway` uses `LimitLoadToSessionType Aqua`; SSH-only sessions cannot load the LaunchAgent.
 
@@ -115,7 +115,7 @@ Run in this order (`deploy_local.sh` / `deploy_all.sh` do this automatically):
 
 | Playbook | Purpose |
 |----------|---------|
-| `deploy_hermes.yml` | Core: Ollama, Hermes CLI, config, `.env` |
+| `deploy_hermes.yml` | Core: LM Studio, Hermes CLI, config, `.env` |
 | `deploy_investment.yml` | Midnight stock watchlist |
 | `deploy_news.yml` | 5 AM IT/AI news digest |
 | `deploy_digest.yml` | 6 AM combined HTML briefing via Telegram |
@@ -127,7 +127,8 @@ Run `deploy_hermes.yml` first — skill playbooks expect `~/.hermes/` to exist.
 | | Local (`deploy_local.sh`) | Remote (`deploy_all.sh`) |
 |--|---------------------------|--------------------------|
 | Required | `ansible-playbook`, `vars.yml` | + SSH, `inventory.ini` |
-| macOS | [Homebrew](https://brew.sh/) | Same |
+| macOS | [Homebrew](https://brew.sh/) (git, node) | Same |
+| Linux | `libatomic1` (installed by playbook) | Same |
 | API keys | Telegram + Firecrawl | Same |
 
 ## macOS vs Linux
@@ -136,6 +137,8 @@ Run `deploy_hermes.yml` first — skill playbooks expect `~/.hermes/` to exist.
 |--|--------------|---------------|
 | User / home | `hermes` → `/home/hermes` | Your login user → `~/` |
 | Config & skills | `/home/hermes/.hermes/` | `~/.hermes/` |
+| LLM model | GGUF via `lmstudio_model_linux` | MLX via `lmstudio_model` |
+| LLM service | systemd (`llmster`) | `lms daemon up` + `lms server start` |
 | Scheduler | cron | LaunchAgents in `~/Library/LaunchAgents/` |
 | Gateway | systemd (`hermes-workspace`) | LaunchAgent (`com.hermes.gateway`) |
 
@@ -161,7 +164,7 @@ Logs: `~/.hermes/logs/` · macOS gateway: `launchctl print gui/$(id -u)/com.herm
 chmod +x test_hermes_daily_digest.sh && ./test_hermes_daily_digest.sh
 ```
 
-Needs Ollama running, `firecrawl_api_key`, and Telegram configured. May take several minutes; override timeout:
+Needs LM Studio running, `firecrawl_api_key`, and Telegram configured. May take several minutes; override timeout:
 
 ```bash
 SMOKE_TEST_TIMEOUT=3600 ./test_hermes_daily_digest.sh
@@ -184,10 +187,12 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | Variable | Purpose |
 |----------|---------|
 | `hermes_start_agents` | Start gateway after deploy (default `true`; set `false` or `START_HERMES_AGENTS=0` to skip) |
-| `ollama_model` | LLM to pull via Ollama (also `model.default` in `config.yaml`) |
-| `ollama_base_url` | Ollama OpenAI-compatible API URL (also `model.base_url`) |
-| `hermes_model_provider` | Hermes provider for local Ollama (default `custom`) |
-| `hermes_model_api_key` | API key for `model.provider` (empty for local Ollama) |
+| `lmstudio_model` | MLX model for macOS (also `model.default` on Darwin) |
+| `lmstudio_model_linux` | GGUF model for Linux/WSL2 |
+| `lmstudio_base_url` | LM Studio OpenAI-compatible API URL (default `http://127.0.0.1:1234/v1`) |
+| `lmstudio_server_port` | Port for `lms server start` (default `1234`) |
+| `hermes_model_provider` | Hermes provider for LM Studio (default `custom`) |
+| `hermes_model_api_key` | LM Studio API token when auth is on; use `lm-studio` when auth is off |
 | `tracked_stocks` | Tickers for investment skill |
 | `firecrawl_init_all` / `firecrawl_verify_install` | Firecrawl setup in `~/.hermes/workspace` |
 
@@ -201,9 +206,13 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | Hermes CLI not found | Run `deploy_hermes.yml` first; check `~/.local/bin/hermes` |
 | Skill playbook fails | Core deploy must run first — use `deploy_local.sh` / `deploy_all.sh` |
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
-| Digest smoke test fails | Ensure Ollama is running (`ollama list`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for Ollama. Check `~/.hermes/skills/daily-morning-digest/SKILL.md` and logs in `~/.hermes/logs/` |
-| `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For local Ollama, `model.provider` must be `custom` with `base_url: http://127.0.0.1:11434/v1` |
+| LM Studio 401 / auth errors | Enable token in LM Studio Developer → Require Authentication → Manage Tokens; set matching value in `hermes_model_api_key` |
+| Gemma 4 MLX load fails | Update LM Studio to latest; Gemma 4 needs recent mlx-engine. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
+| Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for LM Studio. Check logs in `~/.hermes/logs/` |
+| `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For LM Studio, `model.provider` must be `custom` with `base_url: http://127.0.0.1:1234/v1` and a non-empty `api_key` |
 | macOS job not firing | `launchctl list \| grep hermes` · reload plist after re-deploy |
+
+**Hugging Face token:** Not required for `lmstudio-community/gemma-4-E2B-it-MLX-4bit` (public, ungated). Only needed if you download gated base models from Hugging Face.
 
 ## Project layout
 
