@@ -41,7 +41,16 @@ if [[ "$LOCAL_DEPLOY" == "true" ]]; then
 fi
 
 echo "==> Starting Hermes gateway"
-ansible-playbook "${EXTRA_ARGS[@]}"
+if ! ansible-playbook "${EXTRA_ARGS[@]}"; then
+  echo
+  echo "==> Gateway start FAILED"
+  echo "    Scroll up for the 'Hermes gateway diagnostics' report."
+  echo "    Common causes:"
+  echo "      - Ollama not running (check ollama_base_url in vars.yml)"
+  echo "      - Gateway crash on startup (~/.hermes/logs/gateway.stderr.log on macOS)"
+  echo "      - Not logged into the Mac GUI (LaunchAgent requires an Aqua session)"
+  exit 1
+fi
 
 echo
 if [[ "$(uname -s)" == "Darwin" ]]; then

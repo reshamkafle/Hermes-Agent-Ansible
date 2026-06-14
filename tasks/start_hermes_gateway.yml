@@ -98,17 +98,50 @@
   tags:
     - hermes_agents
 
-- name: Verify Hermes gateway LaunchAgent is loaded (macOS)
-  shell: launchctl print "gui/$(id -u)/com.hermes.gateway" >/dev/null 2>&1
-  args:
-    executable: /bin/bash
-  environment:
-    HOME: "{{ target_home }}"
-  register: gateway_verify
-  changed_when: false
-  retries: 5
-  delay: 2
-  until: gateway_verify.rc == 0
-  when: ansible_facts['os_family'] == 'Darwin'
+- name: Verify Hermes gateway is healthy
+  block:
+    - name: Verify Hermes gateway LaunchAgent is loaded (macOS)
+      shell: launchctl print "gui/$(id -u)/com.hermes.gateway" >/dev/null 2>&1
+      args:
+        executable: /bin/bash
+      environment:
+        HOME: "{{ target_home }}"
+      register: gateway_verify
+      changed_when: false
+      retries: 5
+      delay: 2
+      until: gateway_verify.rc == 0
+      when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Verify Hermes gateway process is running (macOS)
+      shell: pgrep -f "[h]ermes.*gateway run" >/dev/null 2>&1
+      args:
+        executable: /bin/bash
+      register: gateway_process_verify
+      changed_when: false
+      retries: 5
+      delay: 2
+      until: gateway_process_verify.rc == 0
+      when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Verify Hermes gateway systemd service is active (Linux)
+      command: systemctl is-active hermes-workspace
+      register: gateway_systemd_verify
+      changed_when: false
+      retries: 5
+      delay: 2
+      until: gateway_systemd_verify.rc == 0
+      when: ansible_facts['os_family'] == 'Debian'
+      become: true
+  rescue:
+    - name: Diagnose Hermes gateway startup failure
+      import_tasks: diagnose_hermes_gateway.yml
+
+    - name: Fail with gateway startup diagnostics
+      fail:
+        msg: >-
+          Hermes gateway did not start successfully. See the diagnostic report
+          printed above for likely causes (Ollama down, crash on startup, or
+          missing macOS GUI session).
   tags:
     - hermes_agents

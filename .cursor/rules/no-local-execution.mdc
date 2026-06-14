@@ -1,0 +1,37 @@
+---
+description: Code changes only — no installs or execution on this machine
+alwaysApply: true
+---
+
+# Local Development: Edit Only
+
+This machine is **not** a deployment or test target. Agents must **only modify project files** — never install, run, or deploy anything locally.
+
+## Allowed
+
+- Read and search files in the repo
+- Edit, create, or delete source files (YAML, templates, scripts, docs, config)
+- Explain how the user can run or deploy on their own machine
+
+## Forbidden — Do Not Run Locally
+
+Never use the terminal (or any tool) to:
+
+- **Install** packages or tools (`pip install`, `npm install`, `brew install`, `ansible-galaxy`, etc.)
+- **Execute** playbooks, scripts, or apps (`ansible-playbook`, `./test_telegram.sh`, `python`, `bash`, etc.)
+- **Deploy or configure** the system (`launchctl load`, copying to `~/Library/LaunchAgents`, etc.)
+- **Start services**, cron jobs, or background processes
+- **Commit, push, or change git state** unless the user explicitly asks
+
+## When Verification Is Needed
+
+Do not run commands to verify. Instead:
+
+1. Make the code change
+2. Tell the user exactly what to run on their target machine, for example:
+   - `ansible-playbook deploy_hermes.yml`
+   - `./test_telegram.sh`
+
+## Default Behavior
+
+When fixing bugs or adding features: **change the files, then stop**. Assume all execution happens elsewhere.

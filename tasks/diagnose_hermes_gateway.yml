@@ -1,0 +1,137 @@
+---
+# Print actionable diagnostics when the Hermes gateway fails to start or stay up.
+# Requires: target_home, ollama_base_url, ollama_model
+
+- name: Check Ollama endpoint is reachable
+  uri:
+    url: "{{ ollama_base_url | regex_replace('/v1/?$', '') }}/api/tags"
+    method: GET
+    status_code: 200
+  register: gateway_diag_ollama
+  failed_when: false
+  tags:
+    - hermes_agents
+
+- name: Check Hermes gateway process is running (macOS)
+  shell: pgrep -f "[h]ermes.*gateway run" >/dev/null 2>&1
+  args:
+    executable: /bin/bash
+  register: gateway_diag_process
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags:
+    - hermes_agents
+
+- name: Check GUI (Aqua) session is available (macOS)
+  shell: launchctl print "gui/$(id -u)" >/dev/null 2>&1
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: "{{ target_home }}"
+  register: gateway_diag_aqua
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags:
+    - hermes_agents
+
+- name: Read LaunchAgent status (macOS)
+  shell: launchctl print "gui/$(id -u)/com.hermes.gateway" 2>&1 || echo "(LaunchAgent com.hermes.gateway is not loaded)"
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: "{{ target_home }}"
+  register: gateway_diag_launchctl
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags:
+    - hermes_agents
+
+- name: Read recent gateway stderr log (macOS)
+  shell: |
+    LOG="{{ target_home }}/.hermes/logs/gateway.stderr.log"
+    if [[ -f "$LOG" ]]; then
+      tail -n 25 "$LOG"
+    else
+      echo "(missing: $LOG)"
+    fi
+  args:
+    executable: /bin/bash
+  register: gateway_diag_stderr
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags:
+    - hermes_agents
+
+- name: Check Hermes gateway systemd service (Linux)
+  shell: systemctl is-active hermes-workspace 2>&1
+  register: gateway_diag_systemd
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Debian'
+  become: true
+  tags:
+    - hermes_agents
+
+- name: Read recent gateway journal (Linux)
+  shell: journalctl -u hermes-workspace -n 25 --no-pager 2>&1 || echo "(no journal entries for hermes-workspace)"
+  register: gateway_diag_journal
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Debian'
+  become: true
+  tags:
+    - hermes_agents
+
+- name: Build Hermes gateway diagnostic report
+  set_fact:
+    gateway_diag_report: |
+      === Hermes gateway diagnostics ===
+      {% if gateway_diag_ollama.status | default(0) == 200 %}
+      Ollama: OK at {{ ollama_base_url }}
+      {% else %}
+      Ollama: NOT reachable at {{ ollama_base_url }}.
+        Fix: Start Ollama first, then run `ollama pull {{ ollama_model }}`.
+      {% endif %}
+      {% if ansible_facts['os_family'] == 'Darwin' %}
+      {% if gateway_diag_aqua.rc | default(1) == 0 %}
+      macOS GUI session (Aqua): OK — LaunchAgent can load in this session.
+      {% else %}
+      macOS GUI session (Aqua): NOT available — log in to the Mac desktop (not SSH-only).
+        Fix: com.hermes.gateway uses LimitLoadToSessionType Aqua and needs an active GUI session.
+      {% endif %}
+      {% if gateway_diag_process.rc | default(1) == 0 %}
+      Gateway process: running (`hermes gateway run`).
+      {% else %}
+      Gateway process: NOT running — likely crashed on startup.
+        Fix: check {{ target_home }}/.hermes/logs/gateway.stderr.log
+      {% endif %}
+      LaunchAgent status:
+      {{ gateway_diag_launchctl.stdout | default('(not loaded)') }}
+
+      Recent gateway stderr (last 25 lines):
+      {{ gateway_diag_stderr.stdout | default('(no log output)') }}
+      {% elif ansible_facts['os_family'] == 'Debian' %}
+      systemd hermes-workspace: {{ gateway_diag_systemd.stdout | default('unknown') | trim }}
+      {% if gateway_diag_systemd.rc | default(1) == 0 %}
+      Gateway service: active.
+      {% else %}
+      Gateway service: NOT active — likely crashed on startup.
+        Fix: run `systemctl status hermes-workspace` and check the journal below.
+      {% endif %}
+
+      Recent gateway journal (last 25 lines):
+      {{ gateway_diag_journal.stdout | default('(no journal output)') }}
+      {% endif %}
+      === End diagnostics ===
+  tags:
+    - hermes_agents
+
+- name: Print Hermes gateway diagnostic report
+  debug:
+    msg: "{{ gateway_diag_report.split('\n') }}"
+  tags:
+    - hermes_agents
