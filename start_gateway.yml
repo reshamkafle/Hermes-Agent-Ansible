@@ -26,3 +26,24 @@
 
     - name: Start Hermes gateway daemon
       import_tasks: tasks/start_hermes_gateway.yml
+
+    - name: Run Hermes gateway diagnostics
+      import_tasks: tasks/diagnose_hermes_gateway.yml
+
+    - name: Require gateway to be healthy after diagnostics (macOS)
+      assert:
+        that:
+          - gateway_diag_process.rc | default(1) == 0
+        fail_msg: >-
+          Hermes gateway process is not running. See the diagnostic report printed
+          above and {{ target_home }}/.hermes/logs/gateway.stderr.log
+      when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Require gateway to be healthy after diagnostics (Linux)
+      assert:
+        that:
+          - gateway_diag_systemd.rc | default(1) == 0
+        fail_msg: >-
+          Hermes gateway service is not active. See the diagnostic report printed
+          above and `systemctl status hermes-workspace`.
+      when: ansible_facts['os_family'] == 'Debian'

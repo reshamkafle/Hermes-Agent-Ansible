@@ -41,10 +41,34 @@ if [[ "$LOCAL_DEPLOY" == "true" ]]; then
 fi
 
 echo "==> Starting Hermes gateway"
+echo "    Note: Telegram may show 'Gateway shutting down' during restart — that is expected."
+
+ANSIBLE_RC=0
 if ! ansible-playbook "${EXTRA_ARGS[@]}"; then
+  ANSIBLE_RC=1
+fi
+
+echo
+echo "==> Gateway diagnostics"
+DIAG_RC=0
+if [[ "$LOCAL_DEPLOY" == "true" ]]; then
+  if ! bash "$SCRIPT_DIR/scripts/diagnose_gateway.sh" vars.yml; then
+    DIAG_RC=1
+  fi
+else
+  echo "    Run on the target host after SSH:"
+  echo "      bash scripts/diagnose_gateway.sh vars.yml"
+fi
+
+if [[ "$ANSIBLE_RC" -ne 0 || "$DIAG_RC" -ne 0 ]]; then
   echo
   echo "==> Gateway start FAILED"
-  echo "    Scroll up for the 'Hermes gateway diagnostics' report."
+  if [[ "$ANSIBLE_RC" -ne 0 ]]; then
+    echo "    Ansible playbook failed — see task output above."
+  fi
+  if [[ "$DIAG_RC" -ne 0 ]]; then
+    echo "    Diagnostics found problems — see the report above."
+  fi
   echo "    Common causes:"
   echo "      - Ollama not running (check ollama_base_url in vars.yml)"
   echo "      - Gateway crash on startup (~/.hermes/logs/gateway.stderr.log on macOS)"

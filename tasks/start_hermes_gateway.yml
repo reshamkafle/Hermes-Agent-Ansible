@@ -135,7 +135,7 @@
       become: true
   rescue:
     - name: Diagnose Hermes gateway startup failure
-      import_tasks: diagnose_hermes_gateway.yml
+      import_tasks: "{{ playbook_dir }}/tasks/diagnose_hermes_gateway.yml"
 
     - name: Fail with gateway startup diagnostics
       fail:

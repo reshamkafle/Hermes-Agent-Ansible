@@ -130,8 +130,18 @@
   tags:
     - hermes_agents
 
+- name: Write Hermes gateway diagnostic report for display
+  copy:
+    content: "{{ gateway_diag_report }}\n"
+    dest: "{{ target_home }}/.hermes/logs/gateway-diagnostics.txt"
+    mode: "0644"
+  tags:
+    - hermes_agents
+
 - name: Print Hermes gateway diagnostic report
-  debug:
-    msg: "{{ gateway_diag_report.split('\n') }}"
+  shell: cat "{{ target_home }}/.hermes/logs/gateway-diagnostics.txt"
+  args:
+    executable: /bin/bash
+  changed_when: false
   tags:
     - hermes_agents
