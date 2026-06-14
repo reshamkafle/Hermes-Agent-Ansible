@@ -17,13 +17,7 @@ cp vars.example..yml vars.yml
 cp inventory.example.ini inventory.ini
 ```
 
-3. **Test Telegram** (optional, before deploy):
-
-```bash
-chmod +x test_telegram.sh && ./test_telegram.sh
-```
-
-4. **Deploy**
+3. **Deploy**
 
 ```bash
 # This machine
@@ -31,6 +25,14 @@ chmod +x deploy_local.sh && ./deploy_local.sh
 
 # Remote host (requires inventory.ini — not localhost)
 chmod +x deploy_all.sh && ./deploy_all.sh
+```
+
+4. **Smoke tests** (optional — see [Smoke tests](#smoke-tests) below):
+
+```bash
+chmod +x test_telegram.sh && ./test_telegram.sh                    # before deploy
+chmod +x test_lmstudio_gateway.sh && ./test_lmstudio_gateway.sh      # after deploy
+chmod +x test_hermes_daily_digest.sh && ./test_hermes_daily_digest.sh
 ```
 
 The gateway starts automatically after deploy (controlled by `hermes_start_agents` in `vars.yml`, default `true`).
@@ -102,6 +104,8 @@ Exit code `0` = healthy; `1` = at least one check failed (with fix hints in the 
 
 `./start_gateway.sh` runs this script automatically after Ansible on localhost. Ansible also writes the same report to `~/.hermes/logs/gateway-diagnostics.txt` during `start_gateway.yml`.
 
+For the same checks plus verification that your configured LM Studio model is listed, use the [LM Studio and gateway smoke test](#lm-studio-and-gateway).
+
 **Common causes when diagnostics fail**
 
 - **LM Studio not running** — config points at `lmstudio_base_url` (default `http://127.0.0.1:1234/v1`). Run `lms daemon up`, `lms server start`, then `lms get <model>`.
@@ -156,15 +160,71 @@ Logs: `~/.hermes/logs/` · macOS gateway: `launchctl print gui/$(id -u)/com.herm
 
 ## Smoke tests
 
-**Telegram** — `./test_telegram.sh` — confirms bot token and chat IDs (no Hermes install).
+Optional checks you can run on localhost before or after deploy. None of these install Hermes or touch remote hosts.
 
-**Daily digest** — after deploy:
+### Telegram
+
+Confirms bot token and chat IDs. Can run **before** deploy.
+
+```bash
+chmod +x test_telegram.sh && ./test_telegram.sh
+```
+
+Playbook: `smoke_test_telegram.yml`
+
+### LM Studio and gateway
+
+Confirms LM Studio is up, your configured model is available, and the Hermes gateway is running. Run **after** `./deploy_local.sh`.
+
+```bash
+chmod +x test_lmstudio_gateway.sh && ./test_lmstudio_gateway.sh
+```
+
+Playbook: `smoke_test_lmstudio_gateway.yml`
+
+**Prerequisites**
+
+- `vars.yml` with `lmstudio_base_url`, `lmstudio_model` (macOS), or `lmstudio_model_linux` (Linux)
+- `./deploy_local.sh` already run (`~/.hermes` exists and gateway is installed)
+- LM Studio running with the model from `vars.yml` loaded:
+
+```bash
+lms daemon up
+lms server start
+lms get <model-from-vars.yml>    # e.g. lmstudio-community/gemma-4-E2B-it-MLX-4bit
+lms load <model-from-vars.yml>
+```
+
+**What it checks**
+
+| Check | macOS | Linux |
+|-------|-------|-------|
+| LM Studio API at `lmstudio_base_url` | yes | yes |
+| Model from `vars.yml` in `/v1/models` | yes | yes |
+| Gateway process / service running | `pgrep` for `hermes gateway run` | `systemctl is-active hermes-workspace` |
+| LaunchAgent loaded | `com.hermes.gateway` | — |
+| GUI session (Aqua) for LaunchAgent | yes | — |
+
+Exit code `0` = all checks passed; `1` = at least one failed. On failure, the playbook prints the full gateway diagnostic report and writes `~/.hermes/logs/gateway-diagnostics.txt`.
+
+**If it fails**
+
+- **LM Studio not reachable** — start the server and load the model (commands above). Confirm with `curl http://127.0.0.1:1234/v1/models` (or your `lmstudio_base_url`).
+- **Model not listed** — run `lms get` and `lms load` for the model in `vars.yml`.
+- **Gateway not running** — run `./start_gateway.sh` or `bash scripts/diagnose_gateway.sh vars.yml`.
+- **macOS LaunchAgent missing** — log in to the Mac desktop (not SSH-only); `com.hermes.gateway` requires an Aqua GUI session.
+
+### Daily digest
+
+Runs the full `daily-morning-digest` skill (news + investment → HTML + Telegram). Run **after** deploy. May take several minutes.
 
 ```bash
 chmod +x test_hermes_daily_digest.sh && ./test_hermes_daily_digest.sh
 ```
 
-Needs LM Studio running, `firecrawl_api_key`, and Telegram configured. May take several minutes; override timeout:
+Playbook: `smoke_test_hermes_daily_digest.yml`
+
+Needs LM Studio running, `firecrawl_api_key`, and Telegram configured. Override timeout (default 1800 seconds):
 
 ```bash
 SMOKE_TEST_TIMEOUT=3600 ./test_hermes_daily_digest.sh
@@ -209,6 +269,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | LM Studio 401 / auth errors | Enable token in LM Studio Developer → Require Authentication → Manage Tokens; set matching value in `hermes_model_api_key` |
 | Gemma 4 MLX load fails | Update LM Studio to latest; Gemma 4 needs recent mlx-engine. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
 | Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for LM Studio. Check logs in `~/.hermes/logs/` |
+| LM Studio / gateway smoke test fails | Run `./test_lmstudio_gateway.sh` — see [LM Studio and gateway](#lm-studio-and-gateway). Start LM Studio, load the model from `vars.yml`, then `./start_gateway.sh` if the gateway is down |
 | `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For LM Studio, `model.provider` must be `custom` with `base_url: http://127.0.0.1:1234/v1` and a non-empty `api_key` |
 | macOS job not firing | `launchctl list \| grep hermes` · reload plist after re-deploy |
 
@@ -218,7 +279,9 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 
 ```
 deploy_hermes.yml          deploy_investment.yml    deploy_news.yml    deploy_digest.yml
-deploy_local.sh            deploy_all.sh            start_gateway.sh   start_gateway.yml   test_telegram.sh   test_hermes_daily_digest.sh
+deploy_local.sh            deploy_all.sh            start_gateway.sh   start_gateway.yml
+test_telegram.sh           test_lmstudio_gateway.sh test_hermes_daily_digest.sh
+smoke_test_telegram.yml    smoke_test_lmstudio_gateway.yml smoke_test_hermes_daily_digest.yml
 scripts/diagnose_gateway.sh    scripts/read_hermes_start_agents.sh
 tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    tasks/diagnose_hermes_gateway.yml    templates/*.j2    vars.yml (from vars.example..yml)
 ```

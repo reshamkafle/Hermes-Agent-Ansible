@@ -1,0 +1,192 @@
+---
+- name: Smoke test LM Studio and Hermes gateway
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  tasks:
+    - name: Require vars.yml beside this playbook
+      stat:
+        path: "{{ playbook_dir }}/vars.yml"
+      register: hermes_vars_file
+
+    - name: Fail when vars.yml is missing
+      fail:
+        msg: >-
+          {{ playbook_dir }}/vars.yml not found. Copy vars.example..yml to
+          vars.yml and set lmstudio_base_url, lmstudio_model, and related settings.
+      when: not hermes_vars_file.stat.exists
+
+    - name: Load deployment variables from vars.yml
+      include_vars:
+        file: "{{ playbook_dir }}/vars.yml"
+
+    - name: Establish workspace path variables
+      set_fact:
+        target_home: "{{ ansible_facts['env']['HOME'] | default(lookup('env', 'HOME')) }}"
+        target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
+
+    - name: Resolve OS-specific LM Studio model identifier
+      set_fact:
+        lmstudio_effective_model: >-
+          {{
+            lmstudio_model_linux | default('lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M')
+            if (ansible_facts['os_family'] == 'Debian')
+            else lmstudio_model
+          }}
+        lmstudio_model_base_id: "{{ lmstudio_effective_model.split('@')[0] }}"
+
+    - name: Check Hermes home directory exists
+      stat:
+        path: "{{ target_home }}/.hermes"
+      register: hermes_home_stat
+
+    - name: Require prior Hermes deploy for gateway smoke test
+      assert:
+        that:
+          - hermes_home_stat.stat.exists
+        fail_msg: >-
+          {{ target_home }}/.hermes not found. Run ./deploy_local.sh first to
+          install Hermes and the gateway LaunchAgent / systemd service.
+
+    - name: Query LM Studio models endpoint
+      uri:
+        url: "{{ lmstudio_base_url | regex_replace('/?$', '') }}/models"
+        method: GET
+        status_code: 200
+        headers: "{{ {'Authorization': 'Bearer ' + (hermes_model_api_key | default('lm-studio', true)) } if (hermes_model_api_key | default('') | trim | length > 0) else omit }}"
+      register: lmstudio_models
+      failed_when: false
+
+    - name: Collect model IDs reported by LM Studio
+      set_fact:
+        lmstudio_model_ids: >-
+          {{
+            lmstudio_models.json.data | default([])
+            | map(attribute='id')
+            | map('string')
+            | list
+          }}
+      when: lmstudio_models.status | default(0) == 200
+
+    - name: Default model IDs when LM Studio is unreachable
+      set_fact:
+        lmstudio_model_ids: []
+      when: lmstudio_models.status | default(0) != 200
+
+    - name: Check configured model is listed by LM Studio
+      set_fact:
+        lmstudio_model_available: >-
+          {{
+            (lmstudio_effective_model in lmstudio_model_ids)
+            or (
+              lmstudio_model_ids
+              | select('search', lmstudio_model_base_id)
+              | list
+              | length > 0
+            )
+          }}
+
+    - name: Check Hermes gateway process is running (macOS)
+      shell: pgrep -f "[h]ermes.*gateway run" >/dev/null 2>&1
+      args:
+        executable: /bin/bash
+      register: gateway_process_check
+      changed_when: false
+      failed_when: false
+      when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Check GUI (Aqua) session is available (macOS)
+      shell: launchctl print "gui/$(id -u)" >/dev/null 2>&1
+      args:
+        executable: /bin/bash
+      environment:
+        HOME: "{{ target_home }}"
+      register: gateway_aqua_check
+      changed_when: false
+      failed_when: false
+      when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Check Hermes gateway LaunchAgent is loaded (macOS)
+      shell: launchctl print "gui/$(id -u)/com.hermes.gateway" >/dev/null 2>&1
+      args:
+        executable: /bin/bash
+      environment:
+        HOME: "{{ target_home }}"
+      register: gateway_launchctl_check
+      changed_when: false
+      failed_when: false
+      when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Check Hermes gateway systemd service (Linux)
+      shell: systemctl is-active hermes-workspace 2>&1
+      register: gateway_systemd_check
+      changed_when: false
+      failed_when: false
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Verify LM Studio and gateway health
+      block:
+        - name: Assert LM Studio API is reachable
+          assert:
+            that:
+              - lmstudio_models.status | default(0) == 200
+            fail_msg: >-
+              LM Studio is not reachable at {{ lmstudio_base_url }}.
+              Run `lms daemon up`, `lms server start`, then
+              `lms get {{ lmstudio_effective_model }}`.
+
+        - name: Assert configured model is available in LM Studio
+          assert:
+            that:
+              - lmstudio_model_available | bool
+            fail_msg: >-
+              Model {{ lmstudio_effective_model }} was not found in LM Studio's
+              /models response (got: {{ lmstudio_model_ids | join(', ') | default('(empty)') }}).
+              Run `lms get {{ lmstudio_effective_model }}` and
+              `lms load {{ lmstudio_effective_model }}`.
+
+        - name: Assert Hermes gateway is healthy (macOS)
+          assert:
+            that:
+              - gateway_aqua_check.rc | default(1) == 0
+              - gateway_launchctl_check.rc | default(1) == 0
+              - gateway_process_check.rc | default(1) == 0
+            fail_msg: >-
+              Hermes gateway is not healthy on macOS.
+              Aqua session OK: {{ gateway_aqua_check.rc | default('n/a') == 0 }}.
+              LaunchAgent loaded: {{ gateway_launchctl_check.rc | default('n/a') == 0 }}.
+              Gateway process running: {{ gateway_process_check.rc | default('n/a') == 0 }}.
+              Try `./start_gateway.sh` or check {{ target_home }}/.hermes/logs/gateway.stderr.log.
+          when: ansible_facts['os_family'] == 'Darwin'
+
+        - name: Assert Hermes gateway is healthy (Linux)
+          assert:
+            that:
+              - gateway_systemd_check.rc | default(1) == 0
+            fail_msg: >-
+              Hermes gateway systemd service is not active (state:
+              {{ gateway_systemd_check.stdout | default('unknown') | trim }}).
+              Try `./start_gateway.sh` or `systemctl status hermes-workspace`.
+          when: ansible_facts['os_family'] == 'Debian'
+
+        - name: Report smoke test success
+          debug:
+            msg: >-
+              LM Studio + gateway smoke test passed.
+              LM Studio: {{ lmstudio_base_url }} (model {{ lmstudio_effective_model }}).
+              {% if ansible_facts['os_family'] == 'Darwin' %}
+              Gateway: LaunchAgent com.hermes.gateway loaded and process running.
+              {% elif ansible_facts['os_family'] == 'Debian' %}
+              Gateway: systemd hermes-workspace is active.
+              {% endif %}
+
+      rescue:
+        - name: Print gateway diagnostics after smoke test failure
+          import_tasks: tasks/diagnose_hermes_gateway.yml
+
+        - name: Fail smoke test with diagnostic hint
+          fail:
+            msg: >-
+              LM Studio / gateway smoke test failed. See the diagnostic report
+              above and {{ target_home }}/.hermes/logs/gateway-diagnostics.txt.
