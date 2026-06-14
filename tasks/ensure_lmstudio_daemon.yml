@@ -1,0 +1,100 @@
+---
+# Ensure the LM Studio (llmster) background daemon is running.
+# Requires: lmstudio_home, target_home, target_user, hermes_path_prefix, hermes_model_api_key
+
+- name: Check LM Studio daemon status
+  command: "{{ lmstudio_home }}/bin/lms daemon status"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  register: lms_daemon_status
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Set LM Studio daemon running flag from status
+  set_fact:
+    lms_daemon_already_running: >-
+      {{
+        lms_daemon_status.rc == 0
+        and ('not-running' not in (lms_daemon_status.stdout | lower))
+        and ('not running' not in (lms_daemon_status.stdout | lower))
+      }}
+
+- name: Stop LM Studio daemon for clean restart
+  command: "{{ lmstudio_home }}/bin/lms daemon down"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  when: not lms_daemon_already_running | bool
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Allow LM Studio CLI to settle after fresh install
+  pause:
+    seconds: "{{ lmstudio_daemon_boot_wait_seconds | default(15) }}"
+  when:
+    - not lms_daemon_already_running | bool
+    - lmstudio_cli_was_installed | default(false) | bool
+
+- name: Update LM Studio headless daemon binary after fresh install
+  command: "{{ lmstudio_home }}/bin/lms daemon update"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  when:
+    - not lms_daemon_already_running | bool
+    - lmstudio_cli_was_installed | default(false) | bool
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Start LM Studio headless daemon
+  shell: >-
+    {{ lmstudio_home }}/bin/lms daemon down >/dev/null 2>&1 || true;
+    {{ lmstudio_home }}/bin/lms daemon up
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  register: lms_daemon_up
+  changed_when: false
+  retries: "{{ lmstudio_daemon_up_retries | default(3) }}"
+  delay: "{{ lmstudio_daemon_up_retry_delay | default(30) }}"
+  until: lms_daemon_up.rc == 0
+  when: not lms_daemon_already_running | bool
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Re-check LM Studio daemon status after start attempts
+  command: "{{ lmstudio_home }}/bin/lms daemon status"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  register: lms_daemon_status_final
+  changed_when: false
+  failed_when: false
+  when: not lms_daemon_already_running | bool
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Require LM Studio daemon to be running
+  fail:
+    msg: >-
+      LM Studio daemon did not start after {{ lmstudio_daemon_up_retries | default(3) }} attempts.
+      Quit the LM Studio GUI app if it is open, then run manually:
+      {{ lmstudio_home }}/bin/lms daemon down &&
+      {{ lmstudio_home }}/bin/lms daemon up
+  when:
+    - not lms_daemon_already_running | bool
+    - lms_daemon_status_final.rc != 0
+      or ('not-running' in (lms_daemon_status_final.stdout | lower))
+      or ('not running' in (lms_daemon_status_final.stdout | lower))

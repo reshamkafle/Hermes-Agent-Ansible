@@ -88,6 +88,11 @@
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
       become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
+    - name: Record fresh LM Studio CLI install
+      set_fact:
+        lmstudio_cli_was_installed: true
+      when: not lms_bin_stat.stat.exists | bool
+
     - name: Re-check LM Studio CLI after install
       stat:
         path: "{{ lmstudio_home }}/bin/lms"
@@ -102,15 +107,8 @@
           Re-run the installer manually: curl -fsSL https://lmstudio.ai/install.sh | bash
       when: not lms_bin_stat_after_install.stat.exists | bool
 
-    - name: Start LM Studio headless daemon
-      command: "{{ lmstudio_home }}/bin/lms daemon up"
-      environment:
-        HOME: "{{ target_home }}"
-        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-      changed_when: false
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+    - name: Ensure LM Studio headless daemon is running
+      import_tasks: tasks/ensure_lmstudio_daemon.yml
 
     - name: Download LM Studio model (macOS — MLX)
       command: "{{ lmstudio_home }}/bin/lms get {{ lmstudio_effective_model }} --mlx"

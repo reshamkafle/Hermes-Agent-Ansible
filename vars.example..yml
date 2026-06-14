@@ -13,6 +13,11 @@ lmstudio_base_url: "http://127.0.0.1:1234/v1"
 lmstudio_server_port: 1234
 lmstudio_load_model: true
 lmstudio_start_server: true
+# Seconds to wait after a fresh `lms` install before starting the daemon (first boot can be slow).
+lmstudio_daemon_boot_wait_seconds: 15
+# Retries for `lms daemon up` when the daemon times out on first start.
+lmstudio_daemon_up_retries: 3
+lmstudio_daemon_up_retry_delay: 30
 
 # Hermes model routing (~/.hermes/config.yaml). LM Studio uses OpenAI-compat provider "custom".
 hermes_model_provider: "custom"
