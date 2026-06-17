@@ -62,6 +62,7 @@
     lmstudio_home: "{{ lmstudio_lms_cmd | dirname | dirname }}"
   when: lmstudio_lms_present | bool
 
-- name: Set Hermes PATH prefix including LM Studio bin
+- name: Set Hermes PATH prefix including all LM Studio CLI locations
   set_fact:
-    hermes_path_prefix: "{{ lmstudio_home }}/bin:{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+    hermes_path_prefix: >-
+      {{ lmstudio_home }}/bin:{{ target_home }}/.cache/lm-studio/bin:{{ target_home }}/.lmstudio/bin:{{ target_home }}/.hermes/bin:{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin

@@ -175,8 +175,8 @@
     msg: >-
       `lms get {{ lmstudio_model_download_target }}` failed.
       Full log: {{ target_home }}/.hermes/logs/lms-get.log
-      Try manually:
-      {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
+      Re-run: ./deploy_local.sh
+      Or: {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
       Community models must use a Hugging Face URL, not org/repo alone.
       Last log lines:
       {{ lms_get_log_tail.stdout | default('(log empty or missing)') }}
@@ -188,3 +188,33 @@
         (lms_get_macos is defined and (lms_get_macos.failed | default(false) | bool))
         or (lms_get_linux is defined and (lms_get_linux.failed | default(false) | bool))
       )
+
+- name: Wait for LM Studio model to appear on disk after download
+  include_tasks: verify_lmstudio_model_on_disk.yml
+  vars:
+    lmstudio_wait_for_download: true
+  when:
+    - lmstudio_download_model | default(true) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)
+    - >-
+      (
+        (lms_get_macos is defined and not (lms_get_macos.failed | default(false) | bool))
+        or (lms_get_linux is defined and not (lms_get_linux.failed | default(false) | bool))
+      )
+
+- name: Verify configured LM Studio model is on disk before load
+  include_tasks: verify_lmstudio_model_on_disk.yml
+  when: lmstudio_load_model | default(true) | bool
+
+- name: Require configured LM Studio model on disk
+  fail:
+    msg: >-
+      LM Studio model {{ lmstudio_model_base_id }} is not on disk.
+      Deploy automatically runs:
+      {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
+      Check download log: {{ target_home }}/.hermes/logs/lms-get.log
+      Models found on disk: {{ lms_disk_model_keys | default([]) | join(', ') if (lms_disk_model_keys | default([]) | length > 0) else '(none)' }}
+      Re-run: ./deploy_local.sh
+  when:
+    - lmstudio_load_model | default(true) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)

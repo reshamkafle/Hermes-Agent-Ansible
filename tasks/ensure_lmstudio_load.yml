@@ -13,69 +13,46 @@
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
+- name: Confirm LM Studio model on disk before load
+  include_tasks: verify_lmstudio_model_on_disk.yml
+
+- name: Require LM Studio model on disk before load
+  fail:
+    msg: >-
+      Cannot load {{ lmstudio_model_base_id }} — model is not on disk.
+      Re-run ./deploy_local.sh to download automatically.
+      Log: {{ target_home }}/.hermes/logs/lms-get.log
+  when: not (lmstudio_model_on_disk | default(false) | bool)
+
 - name: Build LM Studio model match needles for loaded-model detection
   set_fact:
     lmstudio_model_slug: "{{ lmstudio_model_base_id.split('/')[-1] | lower }}"
+    lmstudio_load_target: "{{ lmstudio_disk_model_key }}"
     lmstudio_match_needles: >-
       {{
         [
           lmstudio_model_base_id | lower,
           (lmstudio_model_base_id.split('/')[-1] | lower),
-          (lmstudio_runtime_model | default(lmstudio_effective_model) | lower),
-          (lmstudio_runtime_model | default(lmstudio_effective_model) | lower | regex_replace(':.*$', ''))
+          (lmstudio_disk_model_key | lower),
+          (lmstudio_disk_model_key | lower | regex_replace(':.*$', ''))
         ] | unique | reject('equalto', '') | list
       }}
 
-- name: Refresh on-disk LM Studio model key before load
-  command: "{{ lmstudio_lms_cmd }} ls --json --llm"
-  environment: &lmstudio_load_env
+- name: Show LM Studio model load plan
+  debug:
+    msg: >-
+      lms load target: {{ lmstudio_load_target }} --yes |
+      match needles: {{ lmstudio_match_needles | join(', ') }}
+
+
+- name: List LM Studio models loaded in memory
+  command: "{{ lmstudio_lms_cmd }} ps --json"
+  environment:
     HOME: "{{ target_home }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
     LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
     TERM: dumb
     NO_COLOR: "1"
-  register: lms_ls_before_load
-  changed_when: false
-  failed_when: false
-  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-
-- name: Parse on-disk LM Studio model keys before load
-  set_fact:
-    lms_disk_model_keys_before_load: >-
-      {{
-        (lms_ls_before_load.stdout | from_json | default([]))
-        | map(attribute='modelKey')
-        | map('string')
-        | list
-      }}
-  when: lms_ls_before_load.rc | default(1) == 0
-
-- name: Default empty on-disk LM Studio model key list before load
-  set_fact:
-    lms_disk_model_keys_before_load: []
-  when: lms_ls_before_load.rc | default(1) != 0
-
-- name: Resolve exact LM Studio model key from disk listing for lms load
-  set_fact:
-    lmstudio_runtime_model: "{{ item }}"
-  loop: "{{ lms_disk_model_keys_before_load }}"
-  when: >
-    (item | lower) == (lmstudio_model_base_id | lower)
-    or ((lmstudio_model_slug | default('')) in (item | lower))
-    or ((item | lower | regex_replace('.*/', '')) == (lmstudio_model_slug | default('')))
-  loop_control:
-    label: "{{ item }}"
-
-- name: Show LM Studio model load plan
-  debug:
-    msg: >-
-      lms load target: {{ lmstudio_runtime_model | default(lmstudio_effective_model) }} --yes |
-      match needles: {{ lmstudio_match_needles | join(', ') }}
-
-- name: List LM Studio models loaded in memory
-  command: "{{ lmstudio_lms_cmd }} ps --json"
-  environment: *lmstudio_load_env
   register: lms_ps_json
   changed_when: false
   failed_when: false
@@ -104,17 +81,22 @@
   debug:
     msg: >-
       LM Studio model already loaded:
-      {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}
+      {{ lmstudio_load_target }}
       (skipping lms load)
   when: lmstudio_model_already_loaded | default(false) | bool
 
 - name: Load LM Studio model into memory (macOS)
   shell: >-
     "{{ lmstudio_lms_cmd }}" load
-    {{ (lmstudio_runtime_model | default(lmstudio_effective_model)) | quote }}
+    {{ lmstudio_load_target | quote }}
     --yes
     >> "{{ target_home }}/.hermes/logs/lms-load.log" 2>&1
-  environment: *lmstudio_load_env
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+    TERM: dumb
+    NO_COLOR: "1"
   async: "{{ lmstudio_load_async_seconds | default(3600) }}"
   poll: "{{ lmstudio_load_poll_interval | default(30) }}"
   register: lms_load_macos
@@ -126,10 +108,15 @@
 - name: Load LM Studio model into memory (Linux / WSL2)
   shell: >-
     "{{ lmstudio_lms_cmd }}" load
-    {{ (lmstudio_runtime_model | default(lmstudio_effective_model)) | quote }}
+    {{ lmstudio_load_target | quote }}
     --yes
     >> "{{ target_home }}/.hermes/logs/lms-load.log" 2>&1
-  environment: *lmstudio_load_env
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+    TERM: dumb
+    NO_COLOR: "1"
   async: "{{ lmstudio_load_async_seconds | default(3600) }}"
   poll: "{{ lmstudio_load_poll_interval | default(30) }}"
   register: lms_load_linux
@@ -158,7 +145,12 @@
 
 - name: Re-check LM Studio models loaded in memory after load
   command: "{{ lmstudio_lms_cmd }} ps --json"
-  environment: *lmstudio_load_env
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+    TERM: dumb
+    NO_COLOR: "1"
   register: lms_ps_after_load
   changed_when: false
   failed_when: false
@@ -213,14 +205,13 @@
 - name: Require LM Studio model load to succeed
   fail:
     msg: >-
-      `lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }} --yes` failed.
+      `lms load {{ lmstudio_load_target }} --yes` failed.
       Load command exit code:
       {{ lms_load_macos.rc | default(lms_load_linux.rc | default('n/a')) }}.
       Full log: {{ target_home }}/.hermes/logs/lms-load.log
       Last `lms ps --json`: {{ lms_ps_after_load_debug | default('(none)') }}
-      Try manually:
-      {{ lmstudio_lms_cmd }} load
-      {{ lmstudio_runtime_model | default(lmstudio_effective_model) }} --yes
+      Re-run: ./deploy_local.sh
+      Or: {{ lmstudio_lms_cmd }} load {{ lmstudio_load_target }} --yes
       Then verify with: {{ lmstudio_lms_cmd }} ps --json
       If guardrails block loading, set modelLoadingGuardrails mode to "off" in LM Studio settings.
       Last log lines:

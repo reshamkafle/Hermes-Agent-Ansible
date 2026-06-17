@@ -3,9 +3,20 @@
 # Requires: target_home
 # Optional: target_user (for Debian become), hermes_install_if_missing (default false)
 
-- name: Set Hermes PATH prefix for user-scoped installs
+- name: Set Hermes PATH prefix for user-scoped installs (preserve LM Studio bins)
   set_fact:
-    hermes_path_prefix: "{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+    hermes_path_prefix: >-
+      {{
+        (
+          (lmstudio_home | default('') ~ '/bin:')
+          if (lmstudio_home | default('') | trim | length > 0)
+          else ''
+        )
+        ~ target_home ~ '/.cache/lm-studio/bin:'
+        ~ target_home ~ '/.lmstudio/bin:'
+        ~ target_home ~ '/.hermes/bin:'
+        ~ target_home ~ '/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin'
+      }}
 
 - name: Initialize Hermes CLI path variable
   set_fact:

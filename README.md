@@ -252,6 +252,7 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | `lmstudio_base_url` | LM Studio OpenAI-compatible API URL (default `http://127.0.0.1:1234/v1`) |
 | `lmstudio_server_port` | Port for `lms server start` (default `1234`) |
 | `lmstudio_download_model` | Run `lms get --yes` during deploy (default `true`; skips if model already on disk) |
+| `lmstudio_wait_retries` / `lmstudio_wait_delay` | After download, poll `lms ls` until model appears (default 36 × 10s = 6 min) |
 | `lmstudio_load_model` | Run `lms load --yes` during deploy (default `true`; skips if model already in memory) |
 | `lmstudio_load_async_seconds` | Max time to wait for `lms load` to finish (default 3600s) |
 | `lmstudio_load_poll_interval` | Ansible poll interval while `lms load` runs (default 30s) |
@@ -274,7 +275,9 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | LM Studio 401 / auth errors | Enable token in LM Studio Developer → Require Authentication → Manage Tokens; set matching value in `hermes_model_api_key` |
 | `lms get` garbled output / deploy fails at model download | Playbooks download via Hugging Face URL: `lms get https://huggingface.co/<org>/<repo> --yes`. Log: `~/.hermes/logs/lms-get.log` |
 | Deploy stuck on `lms load` | Playbooks wait for `lms load --yes` to exit (poll every 30s) and match loaded models via `path`, `modelKey`, `identifier`, and `indexedModelIdentifier`. Log: `~/.hermes/logs/lms-load.log`. First load of a 12B MLX model can take 5–15 min |
-| `Failed to resolve artifact lmstudio-community/gemma-4-e2b-...` | LM Studio's artifact resolver mis-picked a staff model. Playbooks now download via `https://huggingface.co/<org>/<repo>`. Re-run `./deploy_local.sh` or run `lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes` manually |
+| `Model not found` / `lms load` fails | Re-run `./deploy_local.sh` — playbooks auto-download via `lms get`, wait up to 6 min for the model to appear on disk, then load using the exact key from `lms ls`. Logs: `~/.hermes/logs/lms-get.log`, `lms-load.log` |
+| `lms: command not found` in your shell | Deploy installs `~/.hermes/bin/lms` on PATH for playbooks; for interactive use: `export PATH="$HOME/.hermes/bin:$HOME/.cache/lm-studio/bin:$PATH"` |
+| `Failed to resolve artifact lmstudio-community/gemma-4-e2b-...` | LM Studio's artifact resolver mis-picked a staff model. Playbooks now download via `https://huggingface.co/<org>/<repo>`. Re-run `./deploy_local.sh` |
 | Gemma 4 MLX load fails | Update LM Studio to latest; Gemma 4 needs recent mlx-engine. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
 | Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for LM Studio. Check logs in `~/.hermes/logs/` |
 | LM Studio / gateway smoke test fails | Run `./test_lmstudio_gateway.sh` — see [LM Studio and gateway](#lm-studio-and-gateway). Start LM Studio, load the model from `vars.yml`, then `./start_gateway.sh` if the gateway is down |
@@ -291,5 +294,5 @@ deploy_local.sh            deploy_all.sh            start_gateway.sh   start_gat
 test_telegram.sh           test_lmstudio_gateway.sh test_hermes_daily_digest.sh
 smoke_test_telegram.yml    smoke_test_lmstudio_gateway.yml smoke_test_hermes_daily_digest.yml
 scripts/diagnose_gateway.sh    scripts/read_hermes_start_agents.sh
-tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    tasks/diagnose_hermes_gateway.yml    tasks/ensure_lmstudio_model.yml    tasks/ensure_lmstudio_load.yml    templates/*.j2    vars.yml (from vars.example..yml)
+tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    tasks/diagnose_hermes_gateway.yml    tasks/ensure_lmstudio_model.yml    tasks/ensure_lmstudio_load.yml    tasks/verify_lmstudio_model_on_disk.yml    templates/*.j2    vars.yml (from vars.example..yml)
 ```

@@ -73,9 +73,24 @@
           {{ lmstudio_home }}/bin/lms,
           {{ target_home }}/.cache/lm-studio/bin/lms, and
           {{ target_home }}/.lmstudio/bin/lms).
-          Re-run the installer manually: curl -fsSL https://lmstudio.ai/install.sh | bash
-          Then run: {{ lmstudio_lms_cmd }} bootstrap -y
+          Re-run: ./deploy_local.sh
       when: not lmstudio_lms_present | bool
+
+    - name: Ensure Hermes bin directory exists (for lms wrapper)
+      file:
+        path: "{{ target_home }}/.hermes/bin"
+        state: directory
+        mode: '0755'
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+    - name: Install LM Studio CLI wrapper (~/.hermes/bin/lms on PATH for deploy)
+      template:
+        src: "{{ playbook_dir }}/templates/lms_wrapper.sh.j2"
+        dest: "{{ target_home }}/.hermes/bin/lms"
+        mode: '0755'
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
     - name: Add LM Studio CLI to shell PATH (lms bootstrap)
       command: "{{ lmstudio_lms_cmd }} bootstrap -y"
