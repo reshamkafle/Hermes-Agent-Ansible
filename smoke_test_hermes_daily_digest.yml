@@ -27,14 +27,8 @@
         target_home: "{{ ansible_facts['env']['HOME'] | default(lookup('env', 'HOME')) }}"
         target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
 
-    - name: Resolve OS-specific LM Studio model identifier
-      set_fact:
-        lmstudio_effective_model: >-
-          {{
-            lmstudio_model_linux | default('google/gemma-4-12b@Q4_K_M')
-            if (ansible_facts['os_family'] == 'Debian')
-            else lmstudio_model
-          }}
+    - name: Resolve LM Studio model from vars.yml
+      import_tasks: tasks/resolve_lmstudio_model.yml
 
     - name: Validate credentials required for digest skills
       vars:
@@ -127,7 +121,7 @@
           - lmstudio_health.status == 200
         fail_msg: >-
           LM Studio is not reachable at {{ lmstudio_base_url }}. Run
-          `lms daemon up`, `lms server start`, and `lms get {{ lmstudio_effective_model | default(lmstudio_model) }}`
+          `lms daemon up`, `lms server start`, and `lms get {{ lmstudio_effective_model }}`
           before the smoke test.
 
     - name: Ensure digest output directory exists

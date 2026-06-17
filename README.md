@@ -191,7 +191,7 @@ Playbook: `smoke_test_lmstudio_gateway.yml`
 ```bash
 lms daemon up
 lms server start
-lms get <model-from-vars.yml>    # e.g. lmstudio-community/gemma-4-E2B-it-MLX-4bit
+lms get <lmstudio_model-from-vars.yml>
 lms load <model-from-vars.yml>
 ```
 
@@ -247,8 +247,8 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | Variable | Purpose |
 |----------|---------|
 | `hermes_start_agents` | Start gateway after deploy (default `true`; set `false` or `START_HERMES_AGENTS=0` to skip) |
-| `lmstudio_model` | MLX model for macOS (also `model.default` on Darwin) |
-| `lmstudio_model_linux` | GGUF model for Linux/WSL2 |
+| `lmstudio_model` | MLX model for macOS — set in `vars.yml` (see `vars.example..yml`; also `model.default` on Darwin) |
+| `lmstudio_model_linux` | GGUF model for Linux/WSL2 — set in `vars.yml` |
 | `lmstudio_base_url` | LM Studio OpenAI-compatible API URL (default `http://127.0.0.1:1234/v1`) |
 | `lmstudio_server_port` | Port for `lms server start` (default `1234`) |
 | `hermes_model_provider` | Hermes provider for LM Studio (default `custom`) |
@@ -273,7 +273,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For LM Studio, `model.provider` must be `custom` with `base_url: http://127.0.0.1:1234/v1` and a non-empty `api_key` |
 | macOS job not firing | `launchctl list \| grep hermes` · reload plist after re-deploy |
 
-**Hugging Face token:** Not required for `lmstudio-community/gemma-4-E2B-it-MLX-4bit` (public, ungated). Only needed if you download gated base models from Hugging Face.
+**Hugging Face token:** Only needed if you download gated models from Hugging Face. Public LM Studio staff picks (e.g. in `vars.example..yml`) do not require a token.
 
 ## Project layout
 

@@ -1,6 +1,6 @@
 ---
 # Print actionable diagnostics when the Hermes gateway fails to start or stay up.
-# Requires: target_home, lmstudio_base_url, lmstudio_effective_model (or lmstudio_model)
+# Requires: target_home, lmstudio_base_url, lmstudio_effective_model
 
 - name: Check LM Studio endpoint is reachable
   uri:
@@ -95,7 +95,7 @@
       LM Studio: OK at {{ lmstudio_base_url }}
       {% else %}
       LM Studio: NOT reachable at {{ lmstudio_base_url }}.
-        Fix: Run `lms daemon up`, `lms server start`, then `lms get {{ lmstudio_effective_model | default(lmstudio_model) }}`.
+        Fix: Run `lms daemon up`, `lms server start`, then `lms get {{ lmstudio_effective_model }}`.
       {% endif %}
       {% if ansible_facts['os_family'] == 'Darwin' %}
       {% if gateway_diag_aqua.rc | default(1) == 0 %}

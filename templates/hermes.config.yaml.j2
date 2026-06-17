@@ -1,5 +1,5 @@
 model:
-  default: "{{ lmstudio_effective_model | default(lmstudio_model) }}"
+  default: "{{ lmstudio_effective_model }}"
   provider: "{{ hermes_model_provider }}"
   base_url: "{{ lmstudio_base_url }}"
   api_key: "{{ hermes_model_api_key | default('lm-studio', true) }}"

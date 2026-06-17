@@ -1,0 +1,25 @@
+---
+# Resolve lmstudio_effective_model from vars.yml (no hardcoded model IDs).
+# Requires: ansible_facts['os_family']
+# Sets: lmstudio_effective_model, lmstudio_model_base_id
+
+- name: Require LM Studio model in vars.yml (Linux)
+  fail:
+    msg: Set lmstudio_model_linux in vars.yml (see vars.example..yml).
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - lmstudio_model_linux | default('') | trim | length == 0
+
+- name: Require LM Studio model in vars.yml (macOS)
+  fail:
+    msg: Set lmstudio_model in vars.yml (see vars.example..yml).
+  when:
+    - ansible_facts['os_family'] != 'Debian'
+    - lmstudio_model | default('') | trim | length == 0
+
+- name: Resolve OS-specific LM Studio model identifier from vars.yml
+  set_fact:
+    lmstudio_effective_model: >-
+      {{ lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model }}
+    lmstudio_model_base_id: >-
+      {{ (lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model).split('@')[0] }}
