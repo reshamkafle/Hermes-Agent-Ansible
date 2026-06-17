@@ -1,0 +1,12 @@
+---
+# Read the tail of ~/.hermes/logs/lms-get.log for error messages.
+# Requires: target_home
+# Sets: lms_get_log_tail
+
+- name: Read LM Studio download log tail
+  command: tail -n {{ lmstudio_get_log_tail_lines | default(50) }} "{{ target_home }}/.hermes/logs/lms-get.log"
+  register: lms_get_log_tail
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"

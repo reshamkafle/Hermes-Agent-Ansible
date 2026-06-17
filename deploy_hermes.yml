@@ -102,8 +102,8 @@
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
       become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
-    - name: Ensure LM Studio headless daemon is running
-      import_tasks: tasks/ensure_lmstudio_daemon.yml
+    - name: Bootstrap LM Studio runtime (PATH, daemon up, server start)
+      import_tasks: tasks/bootstrap_lmstudio.yml
 
     - name: Download LM Studio model when missing on disk
       import_tasks: tasks/ensure_lmstudio_model.yml
@@ -111,19 +111,6 @@
     - name: Load LM Studio model into memory
       import_tasks: tasks/ensure_lmstudio_load.yml
       when: lmstudio_load_model | default(true) | bool
-
-    - name: Start LM Studio API server (macOS)
-      command: "{{ lmstudio_lms_cmd }} server start --port {{ lmstudio_server_port | default(1234) }}"
-      environment:
-        HOME: "{{ target_home }}"
-        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-      when:
-        - ansible_facts['os_family'] != 'Debian'
-        - lmstudio_start_server | default(true) | bool
-      become: false
-      changed_when: false
-      failed_when: false
 
     - name: Configure LM Studio systemd service (Linux / WSL2)
       template:

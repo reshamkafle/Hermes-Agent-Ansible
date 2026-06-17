@@ -4,14 +4,54 @@
 # Optional: lmstudio_wait_for_download (poll until model appears), lmstudio_wait_retries, lmstudio_wait_delay
 # Sets: lms_disk_model_keys, lmstudio_disk_model_key, lmstudio_model_on_disk
 
-- name: List LM Studio models on disk (verify)
-  command: "{{ lmstudio_lms_cmd }} ls --json --llm"
+- name: Check LM Studio daemon before disk model verify
+  command: "{{ lmstudio_lms_cmd }} daemon status"
   environment: &lmstudio_verify_env
     HOME: "{{ target_home }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
     LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
     TERM: dumb
     NO_COLOR: "1"
+  register: lms_daemon_verify
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Set LM Studio daemon running flag (verify preflight)
+  set_fact:
+    lms_daemon_verify_running: >-
+      {{
+        lms_daemon_verify.rc == 0
+        and ('not-running' not in (lms_daemon_verify.stdout | lower))
+        and ('not running' not in (lms_daemon_verify.stdout | lower))
+      }}
+
+- name: Start LM Studio daemon when not running (verify preflight)
+  command: "{{ lmstudio_lms_cmd }} daemon up"
+  environment: *lmstudio_verify_env
+  register: lms_daemon_up_verify
+  changed_when: false
+  failed_when: false
+  async: "{{ lmstudio_daemon_up_async_seconds | default(300) }}"
+  poll: 10
+  when: not (lms_daemon_verify_running | default(false) | bool)
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Start LM Studio API server before disk listing (verify preflight)
+  command: "{{ lmstudio_lms_cmd }} server start --port {{ lmstudio_server_port | default(1234) }}"
+  environment: *lmstudio_verify_env
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['os_family'] != 'Debian'
+    - lmstudio_start_server | default(true) | bool
+  become: false
+
+- name: List LM Studio models on disk (verify)
+  command: "{{ lmstudio_lms_cmd }} ls --json --llm"
+  environment: *lmstudio_verify_env
   register: lms_ls_verify
   changed_when: false
   failed_when: false
@@ -21,15 +61,8 @@
       and (
         not (lmstudio_wait_for_download | default(false) | bool)
         or (
-          (
-            (lms_ls_verify.stdout | default('[]') | from_json | default([]))
-            | map(attribute='modelKey')
-            | map('string')
-            | map('lower')
-            | select('search', lmstudio_model_base_id.split('/')[-1] | lower)
-            | list
-            | length
-          ) > 0
+          (lmstudio_model_base_id.split('/')[-1] | lower)
+          in (lms_ls_verify.stdout | default('') | lower)
         )
       )
     )
@@ -49,23 +82,34 @@
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
-- name: Parse LM Studio model keys (verify)
+- name: Parse LM Studio disk listing JSON (verify)
+  set_fact:
+    lms_ls_parsed_models: >-
+      {%- if lms_ls_verify.rc | default(1) == 0 -%}
+      {%- set raw = lms_ls_verify.stdout | default('[]') | trim -%}
+      {%- if raw | length > 0 and raw[0] == '[' -%}
+      {{ raw | from_json | default([]) }}
+      {%- else -%}
+      []
+      {%- endif -%}
+      {%- else -%}
+      []
+      {%- endif -%}
+    lmstudio_model_slug: "{{ lmstudio_model_base_id.split('/')[-1] | lower }}"
+
+- name: Build disk model key list from LM Studio listing (verify)
   set_fact:
     lms_disk_model_keys: >-
-      {{
-        (lms_ls_verify.stdout | default('[]') | from_json | default([]))
-        | map(attribute='modelKey')
-        | map('string')
-        | list
-      }}
-    lmstudio_model_slug: "{{ lmstudio_model_base_id.split('/')[-1] | lower }}"
-  when: lms_ls_verify.rc | default(1) == 0
-
-- name: Default empty LM Studio disk model key list (verify)
-  set_fact:
-    lms_disk_model_keys: []
-    lmstudio_model_slug: "{{ lmstudio_model_base_id.split('/')[-1] | lower }}"
-  when: lms_ls_verify.rc | default(1) != 0
+      {%- set models = lms_ls_parsed_models | default([]) -%}
+      {%- set keys = [] -%}
+      {%- for m in models -%}
+      {%- for field in ['modelKey', 'identifier', 'indexedModelIdentifier', 'path'] -%}
+      {%- if m[field] is defined and (m[field] | string | trim | length) > 0 -%}
+      {%- set _ = keys.append(m[field] | string) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ keys | unique | list }}
 
 - name: Resolve exact LM Studio model key from disk listing
   set_fact:
@@ -83,3 +127,60 @@
   set_fact:
     lmstudio_model_on_disk: >-
       {{ (lmstudio_disk_model_key | default('') | trim | length) > 0 }}
+
+- name: Show LM Studio models on disk matching configured slug
+  debug:
+    msg: >-
+      `lms ls --json --llm` models matching '{{ lmstudio_model_slug }}':
+      {{
+        (
+          lms_disk_model_keys | default([])
+          | select('search', lmstudio_model_slug)
+          | list
+        )
+        | join(', ')
+        if (
+          lms_disk_model_keys | default([])
+          | select('search', lmstudio_model_slug)
+          | list
+          | length > 0
+        )
+        else '(none — will run lms get if lmstudio_download_model is true)'
+      }}
+  when: lms_ls_verify.rc | default(1) == 0
+
+- name: Read LM Studio download log before verify failure
+  include_tasks: read_lmstudio_get_log_tail.yml
+  when:
+    - lmstudio_wait_for_download | default(false) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)
+
+- name: Fail when LM Studio model did not appear on disk after download wait
+  fail:
+    msg: >-
+      Timed out waiting for {{ lmstudio_model_base_id }} to appear on disk
+      ({{ lmstudio_wait_retries | default(36) }} checks every
+      {{ lmstudio_wait_delay | default(10) }}s).
+      `lms ls --json --llm` rc={{ lms_ls_verify.rc | default('?') }}.
+      Daemon status: {{ lms_daemon_verify.stdout | default('') | trim }}
+      {{ lms_daemon_verify.stderr | default('') | trim }}
+      Models on disk: {{ lms_disk_model_keys | default([]) | join(', ') if (lms_disk_model_keys | default([]) | length > 0) else '(none)' }}
+      Download log: {{ target_home }}/.hermes/logs/lms-get.log
+      Last log lines:
+      {{ lms_get_log_tail.stdout | default('(log empty or missing)') }}
+      Re-run: ./deploy_local.sh
+  when:
+    - lmstudio_wait_for_download | default(false) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)
+
+- name: Warn when LM Studio disk listing command failed (verify)
+  debug:
+    msg: >-
+      `lms ls --json --llm` failed (rc={{ lms_ls_verify.rc | default('?') }}).
+      stderr: {{ lms_ls_verify.stderr | default('(empty)') | trim }}
+      stdout: {{ lms_ls_verify.stdout | default('(empty)') | trim | truncate(400, True, '...') }}
+      Daemon status: {{ lms_daemon_verify.stdout | default('') | trim }}
+      Ensure the LM Studio daemon is running: {{ lmstudio_lms_cmd }} daemon up
+  when:
+    - not (lmstudio_wait_for_download | default(false) | bool)
+    - lms_ls_verify.rc | default(1) != 0

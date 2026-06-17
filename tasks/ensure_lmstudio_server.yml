@@ -1,0 +1,38 @@
+---
+# Start the LM Studio OpenAI-compatible API server (macOS).
+# Linux/WSL2 uses the llmster systemd unit from deploy_hermes.yml handlers.
+# Requires: lmstudio_lms_cmd, target_home, hermes_path_prefix, hermes_model_api_key
+
+- name: Start LM Studio API server (macOS)
+  command: "{{ lmstudio_lms_cmd }} server start --port {{ lmstudio_server_port | default(1234) }}"
+  environment: &lmstudio_server_env
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+    TERM: dumb
+    NO_COLOR: "1"
+  when:
+    - ansible_facts['os_family'] != 'Debian'
+    - lmstudio_start_server | default(true) | bool
+  become: false
+  changed_when: false
+  failed_when: false
+
+- name: Check LM Studio API server status (macOS)
+  command: "{{ lmstudio_lms_cmd }} server status"
+  environment: *lmstudio_server_env
+  register: lms_server_status
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['os_family'] != 'Debian'
+    - lmstudio_start_server | default(true) | bool
+  become: false
+
+- name: Show LM Studio API server status (macOS)
+  debug:
+    msg: "{{ lms_server_status.stdout | default('(no status output)') | trim }}"
+  when:
+    - ansible_facts['os_family'] != 'Debian'
+    - lmstudio_start_server | default(true) | bool
+    - lms_server_status is defined

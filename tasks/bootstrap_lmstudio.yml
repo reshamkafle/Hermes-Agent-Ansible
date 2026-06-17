@@ -1,0 +1,26 @@
+---
+# Bootstrap LM Studio runtime before model download/load.
+# Automates: PATH setup, lms daemon up, lms server start.
+# Requires: lmstudio_lms_cmd, target_home, hermes_path_prefix, hermes_model_api_key
+
+- name: Show LM Studio CLI and PATH used by deploy
+  debug:
+    msg: >-
+      LM Studio CLI: {{ lmstudio_lms_cmd }} |
+      PATH prefix: {{ hermes_path_prefix }}
+
+- name: Install LM Studio PATH helper for interactive shells
+  copy:
+    dest: "{{ target_home }}/.hermes/bin/lmstudio-path.sh"
+    mode: '0644'
+    content: |
+      # Source in your shell:  source ~/.hermes/bin/lmstudio-path.sh
+      export PATH="{{ target_home }}/.hermes/bin:{{ target_home }}/.cache/lm-studio/bin:{{ lmstudio_home }}/bin:{{ target_home }}/.lmstudio/bin:{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Ensure LM Studio headless daemon is running
+  import_tasks: ensure_lmstudio_daemon.yml
+
+- name: Start LM Studio API server
+  import_tasks: ensure_lmstudio_server.yml

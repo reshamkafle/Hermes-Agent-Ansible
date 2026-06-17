@@ -101,7 +101,8 @@ for playbook in "${PLAYBOOKS[@]}"; do
       tail -n 20 "$lms_log"
     else
       echo "If model download failed, try manually:"
-      echo "  $LMS_CMD get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
+      echo "  source \"${HOME}/.hermes/bin/lmstudio-path.sh\""
+      echo "  lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
       echo "If model load failed or hung, try:"
       echo "  $LMS_CMD load lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
       echo "  $LMS_CMD ps"
