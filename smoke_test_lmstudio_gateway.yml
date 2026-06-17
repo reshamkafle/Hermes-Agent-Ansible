@@ -70,15 +70,21 @@
     - name: Check configured model is listed by LM Studio
       set_fact:
         lmstudio_model_available: >-
-          {{
-            (lmstudio_effective_model in lmstudio_model_ids)
-            or (
-              lmstudio_model_ids
-              | select('search', lmstudio_model_base_id)
-              | list
-              | length > 0
-            )
-          }}
+          {%- set ids = lmstudio_model_ids | default([]) | map('string') | map('lower') | list -%}
+          {%- set needles = [
+            lmstudio_effective_model | lower,
+            lmstudio_model_base_id | lower,
+            (lmstudio_model_base_id.split('/')[-1] | lower)
+          ] | unique | list -%}
+          {%- set ns = namespace(found=false) -%}
+          {%- for model_id in ids -%}
+            {%- for n in needles -%}
+              {%- if n and (n == model_id or n in model_id or model_id in n) -%}
+                {%- set ns.found = true -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- endfor -%}
+          {{ ns.found }}
 
     - name: Check Hermes gateway process is running (macOS)
       shell: pgrep -f "[h]ermes.*gateway run" >/dev/null 2>&1

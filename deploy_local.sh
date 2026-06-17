@@ -16,6 +16,27 @@
 
 set -euo pipefail
 
+resolve_lms_cmd() {
+  local ptr="${HOME}/.lmstudio-home-pointer"
+  local home="${HOME}/.lmstudio"
+  if [[ -f "$ptr" ]]; then
+    home="$(tr -d '[:space:]' < "$ptr")"
+  fi
+  local candidate
+  for candidate in \
+    "${home}/bin/lms" \
+    "${HOME}/.cache/lm-studio/bin/lms" \
+    "${HOME}/.lmstudio/bin/lms"; do
+    if [[ -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "lms"
+}
+
+LMS_CMD="$(resolve_lms_cmd)"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -80,10 +101,17 @@ for playbook in "${PLAYBOOKS[@]}"; do
       tail -n 20 "$lms_log"
     else
       echo "If model download failed, try manually:"
-      echo "  lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
+      echo "  $LMS_CMD get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
       echo "If model load failed or hung, try:"
-      echo "  lms load lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
-      echo "  lms ps"
+      echo "  $LMS_CMD load lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
+      echo "  $LMS_CMD ps"
+      if [[ "$LMS_CMD" == "lms" ]]; then
+        echo "If you see 'command not found', run:"
+        echo "  curl -fsSL https://lmstudio.ai/install.sh | bash"
+        echo "  ~/.cache/lm-studio/bin/lms bootstrap -y   # macOS GUI install"
+        echo "  ~/.lmstudio/bin/lms bootstrap -y            # headless install"
+        echo "Then open a new terminal or: export PATH=\"\$HOME/.cache/lm-studio/bin:\$PATH\""
+      fi
       echo "Logs after re-run: $lms_load_log or $lms_log"
     fi
     exit 1

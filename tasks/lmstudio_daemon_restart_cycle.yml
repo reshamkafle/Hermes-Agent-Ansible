@@ -2,7 +2,7 @@
 # One down + up + status-wait cycle. Sets lms_daemon_ready=true when successful.
 
 - name: Stop LM Studio headless daemon (lms daemon down)
-  command: "{{ lmstudio_home }}/bin/lms daemon down"
+  command: "{{ lmstudio_lms_cmd }} daemon down"
   environment:
     HOME: "{{ target_home }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
@@ -13,7 +13,7 @@
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
 - name: Start LM Studio headless daemon (lms daemon up)
-  command: "{{ lmstudio_home }}/bin/lms daemon up"
+  command: "{{ lmstudio_lms_cmd }} daemon up"
   environment:
     HOME: "{{ target_home }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
@@ -29,7 +29,7 @@
 - name: Wait for LM Studio daemon to become ready
   block:
     - name: Wait for LM Studio daemon to report running
-      command: "{{ lmstudio_home }}/bin/lms daemon status"
+      command: "{{ lmstudio_lms_cmd }} daemon status"
       environment:
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"

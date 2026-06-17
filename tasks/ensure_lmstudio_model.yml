@@ -1,6 +1,6 @@
 ---
 # Download the configured LM Studio model when missing on disk.
-# Requires: lmstudio_home, target_home, hermes_path_prefix, lmstudio_effective_model,
+# Requires: lmstudio_home, lmstudio_lms_cmd, target_home, hermes_path_prefix, lmstudio_effective_model,
 #           lmstudio_model_base_id, lmstudio_model_download_target, lmstudio_get_cli_flags,
 #           hermes_model_api_key
 # Sets: lmstudio_model_on_disk, lmstudio_runtime_model
@@ -14,7 +14,7 @@
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
 - name: List LM Studio models on disk
-  command: "{{ lmstudio_home }}/bin/lms ls --json --llm"
+  command: "{{ lmstudio_lms_cmd }} ls --json --llm"
   environment: &lmstudio_model_env
     HOME: "{{ target_home }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
@@ -66,7 +66,10 @@
   set_fact:
     lmstudio_runtime_model: "{{ item }}"
   loop: "{{ lms_disk_model_keys }}"
-  when: item | lower == (lmstudio_model_base_id | lower)
+  when: >
+    (item | lower) == (lmstudio_model_base_id | lower)
+    or ((lmstudio_model_base_id.split('/')[-1] | lower) in (item | lower))
+    or ((item | lower | regex_replace('.*/', '')) == (lmstudio_model_base_id.split('/')[-1] | lower))
   loop_control:
     label: "{{ item }}"
 
@@ -81,7 +84,7 @@
 
 - name: Download LM Studio model (macOS)
   shell: >-
-    "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_model_download_target | quote }}
+    "{{ lmstudio_lms_cmd }}" get {{ lmstudio_model_download_target | quote }}
     {{ lmstudio_get_cli_flags }}
     >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
   environment: *lmstudio_model_env
@@ -96,7 +99,7 @@
 
 - name: Download LM Studio model (Linux / WSL2)
   shell: >-
-    "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_model_download_target | quote }}
+    "{{ lmstudio_lms_cmd }}" get {{ lmstudio_model_download_target | quote }}
     {{ lmstudio_get_cli_flags }}
     >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
   environment: *lmstudio_model_env
@@ -111,7 +114,7 @@
   become_user: "{{ target_user }}"
 
 - name: Refresh LM Studio model list after download
-  command: "{{ lmstudio_home }}/bin/lms ls --json --llm"
+  command: "{{ lmstudio_lms_cmd }} ls --json --llm"
   environment: *lmstudio_model_env
   register: lms_ls_json_after_get
   changed_when: false
@@ -146,7 +149,10 @@
   loop: "{{ lms_disk_model_keys | default([]) }}"
   when:
     - lms_ls_json_after_get is defined
-    - item | lower == (lmstudio_model_base_id | lower)
+    - >
+      (item | lower) == (lmstudio_model_base_id | lower)
+      or ((lmstudio_model_base_id.split('/')[-1] | lower) in (item | lower))
+      or ((item | lower | regex_replace('.*/', '')) == (lmstudio_model_base_id.split('/')[-1] | lower))
   loop_control:
     label: "{{ item }}"
 
@@ -170,7 +176,7 @@
       `lms get {{ lmstudio_model_download_target }}` failed.
       Full log: {{ target_home }}/.hermes/logs/lms-get.log
       Try manually:
-      {{ lmstudio_home }}/bin/lms get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
+      {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
       Community models must use a Hugging Face URL, not org/repo alone.
       Last log lines:
       {{ lms_get_log_tail.stdout | default('(log empty or missing)') }}

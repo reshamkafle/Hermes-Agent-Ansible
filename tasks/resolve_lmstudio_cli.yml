@@ -1,0 +1,67 @@
+---
+# Resolve LM Studio home directory and lms executable path.
+# macOS GUI installs often use ~/.cache/lm-studio; headless install uses ~/.lmstudio.
+# Requires: target_home, target_user
+# Sets: lmstudio_home, lmstudio_lms_cmd, lmstudio_lms_present, hermes_path_prefix
+
+- name: Read LM Studio home pointer when present
+  slurp:
+    src: "{{ target_home }}/.lmstudio-home-pointer"
+  register: lmstudio_home_pointer
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Set LM Studio home directory from pointer
+  set_fact:
+    lmstudio_home: >-
+      {{
+        (lmstudio_home_pointer.content | b64decode | trim)
+        if (lmstudio_home_pointer is defined and lmstudio_home_pointer.content is defined)
+        else (target_home ~ '/.lmstudio')
+      }}
+
+- name: Probe LM Studio CLI candidate paths
+  stat:
+    path: "{{ item }}"
+  register: lmstudio_lms_candidate_stats
+  loop:
+    - "{{ lmstudio_home }}/bin/lms"
+    - "{{ target_home }}/.cache/lm-studio/bin/lms"
+    - "{{ target_home }}/.lmstudio/bin/lms"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Set LM Studio CLI executable path
+  set_fact:
+    lmstudio_lms_cmd: >-
+      {{
+        (
+          lmstudio_lms_candidate_stats.results
+          | selectattr('stat.exists', 'defined')
+          | selectattr('stat.exists')
+          | map(attribute='stat.path')
+          | list
+          | first
+        )
+        | default(lmstudio_home ~ '/bin/lms', true)
+      }}
+    lmstudio_lms_present: >-
+      {{
+        (
+          lmstudio_lms_candidate_stats.results
+          | selectattr('stat.exists', 'defined')
+          | selectattr('stat.exists')
+          | list
+          | length
+        ) > 0
+      }}
+
+- name: Align LM Studio home with resolved CLI location
+  set_fact:
+    lmstudio_home: "{{ lmstudio_lms_cmd | dirname | dirname }}"
+  when: lmstudio_lms_present | bool
+
+- name: Set Hermes PATH prefix including LM Studio bin
+  set_fact:
+    hermes_path_prefix: "{{ lmstudio_home }}/bin:{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"

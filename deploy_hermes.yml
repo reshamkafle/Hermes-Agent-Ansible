@@ -12,9 +12,8 @@
         target_home: "{{ hermes_home if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['HOME'] | default(lookup('env', 'HOME'))) }}"
         target_user: "{{ hermes_user if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['USER'] | default(ansible_user_id)) }}"
 
-    - name: Set Hermes PATH prefix for user-scoped installs
-      set_fact:
-        hermes_path_prefix: "{{ target_home }}/.lmstudio/bin:{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+    - name: Resolve LM Studio CLI path and PATH prefix
+      import_tasks: tasks/resolve_lmstudio_cli.yml
 
     - name: Resolve LM Studio model from vars.yml
       import_tasks: tasks/resolve_lmstudio_model.yml
@@ -49,57 +48,44 @@
       become: true
 
     # --- Step 1: Install & Set Up LM Studio (llmster) ---
-    - name: Read LM Studio home pointer when present
-      slurp:
-        src: "{{ target_home }}/.lmstudio-home-pointer"
-      register: lmstudio_home_pointer
-      failed_when: false
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-
-    - name: Set LM Studio home directory
-      set_fact:
-        lmstudio_home: >-
-          {{
-            (lmstudio_home_pointer.content | b64decode | trim)
-            if (lmstudio_home_pointer is defined and lmstudio_home_pointer.content is defined)
-            else (target_home ~ '/.lmstudio')
-          }}
-
-    - name: Check if LM Studio CLI (lms) is present
-      stat:
-        path: "{{ lmstudio_home }}/bin/lms"
-      register: lms_bin_stat
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-
     - name: Install LM Studio via official installer (llmster)
       shell: curl -fsSL https://lmstudio.ai/install.sh | bash
       environment:
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-      when: not lms_bin_stat.stat.exists | bool
+      when: not lmstudio_lms_present | bool
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
       become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
     - name: Record fresh LM Studio CLI install
       set_fact:
         lmstudio_cli_was_installed: true
-      when: not lms_bin_stat.stat.exists | bool
+      when: not lmstudio_lms_present | bool
 
-    - name: Re-check LM Studio CLI after install
-      stat:
-        path: "{{ lmstudio_home }}/bin/lms"
-      register: lms_bin_stat_after_install
-      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+    - name: Re-resolve LM Studio CLI path after install
+      import_tasks: tasks/resolve_lmstudio_cli.yml
+      when: not lmstudio_lms_present | bool
 
     - name: Require LM Studio CLI after install
       fail:
         msg: >-
-          LM Studio CLI not found at {{ lmstudio_home }}/bin/lms after install.
+          LM Studio CLI not found after install (tried
+          {{ lmstudio_home }}/bin/lms,
+          {{ target_home }}/.cache/lm-studio/bin/lms, and
+          {{ target_home }}/.lmstudio/bin/lms).
           Re-run the installer manually: curl -fsSL https://lmstudio.ai/install.sh | bash
-      when: not lms_bin_stat_after_install.stat.exists | bool
+          Then run: {{ lmstudio_lms_cmd }} bootstrap -y
+      when: not lmstudio_lms_present | bool
+
+    - name: Add LM Studio CLI to shell PATH (lms bootstrap)
+      command: "{{ lmstudio_lms_cmd }} bootstrap -y"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+      changed_when: false
+      failed_when: false
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
     - name: Ensure LM Studio headless daemon is running
       import_tasks: tasks/ensure_lmstudio_daemon.yml
@@ -112,7 +98,7 @@
       when: lmstudio_load_model | default(true) | bool
 
     - name: Start LM Studio API server (macOS)
-      command: "{{ lmstudio_home }}/bin/lms server start --port {{ lmstudio_server_port | default(1234) }}"
+      command: "{{ lmstudio_lms_cmd }} server start --port {{ lmstudio_server_port | default(1234) }}"
       environment:
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
@@ -203,7 +189,7 @@
           Type=simple
           User={{ hermes_user }}
           Environment=HOME={{ hermes_home }}
-          Environment=PATH={{ hermes_home }}/.lmstudio/bin:{{ hermes_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
+          Environment=PATH={{ lmstudio_home }}/bin:{{ hermes_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
           WorkingDirectory={{ hermes_home }}/.hermes
           ExecStart={{ target_home }}/.hermes/bin/hermes-run.sh gateway run
           Restart=always

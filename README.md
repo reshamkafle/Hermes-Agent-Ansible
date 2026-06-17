@@ -253,7 +253,8 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | `lmstudio_server_port` | Port for `lms server start` (default `1234`) |
 | `lmstudio_download_model` | Run `lms get --yes` during deploy (default `true`; skips if model already on disk) |
 | `lmstudio_load_model` | Run `lms load --yes` during deploy (default `true`; skips if model already in memory) |
-| `lmstudio_load_poll_attempts` / `lmstudio_load_poll_interval` | Poll `lms ps` while loading (default 120 × 15s = 30 min max) |
+| `lmstudio_load_async_seconds` | Max time to wait for `lms load` to finish (default 3600s) |
+| `lmstudio_load_poll_interval` | Ansible poll interval while `lms load` runs (default 30s) |
 | `lmstudio_model_download_url` | Optional override; defaults to `https://huggingface.co/<lmstudio_model>` for org/repo IDs |
 | `hermes_model_provider` | Hermes provider for LM Studio (default `custom`) |
 | `hermes_model_api_key` | LM Studio API token when auth is on; use `lm-studio` when auth is off |
@@ -272,7 +273,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
 | LM Studio 401 / auth errors | Enable token in LM Studio Developer → Require Authentication → Manage Tokens; set matching value in `hermes_model_api_key` |
 | `lms get` garbled output / deploy fails at model download | Playbooks download via Hugging Face URL: `lms get https://huggingface.co/<org>/<repo> --yes`. Log: `~/.hermes/logs/lms-get.log` |
-| Deploy stuck on `lms load` | Playbooks use `lms load --yes` and poll `lms ps` instead of blocking on the CLI. Log: `~/.hermes/logs/lms-load.log`. First load of a 12B MLX model can take 5–15 min — watch with `tail -f ~/.hermes/logs/lms-load.log` |
+| Deploy stuck on `lms load` | Playbooks wait for `lms load --yes` to exit (poll every 30s) and match loaded models via `path`, `modelKey`, `identifier`, and `indexedModelIdentifier`. Log: `~/.hermes/logs/lms-load.log`. First load of a 12B MLX model can take 5–15 min |
 | `Failed to resolve artifact lmstudio-community/gemma-4-e2b-...` | LM Studio's artifact resolver mis-picked a staff model. Playbooks now download via `https://huggingface.co/<org>/<repo>`. Re-run `./deploy_local.sh` or run `lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes` manually |
 | Gemma 4 MLX load fails | Update LM Studio to latest; Gemma 4 needs recent mlx-engine. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
 | Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for LM Studio. Check logs in `~/.hermes/logs/` |

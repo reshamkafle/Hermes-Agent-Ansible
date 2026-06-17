@@ -1,9 +1,9 @@
 ---
 # Ensure the LM Studio (llmster) background daemon is running.
-# Requires: lmstudio_home, target_home, target_user, hermes_path_prefix, hermes_model_api_key
+# Requires: lmstudio_home, lmstudio_lms_cmd, target_home, target_user, hermes_path_prefix, hermes_model_api_key
 
 - name: Check LM Studio daemon status
-  command: "{{ lmstudio_home }}/bin/lms daemon status"
+  command: "{{ lmstudio_lms_cmd }} daemon status"
   environment: &lmstudio_cli_env
     HOME: "{{ target_home }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
@@ -33,7 +33,7 @@
     - lmstudio_quit_gui_before_daemon | default(true) | bool
 
 - name: Stop LM Studio API server before daemon restart
-  command: "{{ lmstudio_home }}/bin/lms server stop"
+  command: "{{ lmstudio_lms_cmd }} server stop"
   environment: *lmstudio_cli_env
   changed_when: false
   failed_when: false
@@ -49,7 +49,7 @@
     - lmstudio_cli_was_installed | default(false) | bool
 
 - name: Update LM Studio headless daemon binary
-  command: "{{ lmstudio_home }}/bin/lms daemon update"
+  command: "{{ lmstudio_lms_cmd }} daemon update"
   environment: *lmstudio_cli_env
   when: not lms_daemon_already_running | bool
   changed_when: false
@@ -73,7 +73,7 @@
     - not (lms_daemon_ready | default(false) | bool)
 
 - name: Re-check LM Studio daemon status after start attempts
-  command: "{{ lmstudio_home }}/bin/lms daemon status"
+  command: "{{ lmstudio_lms_cmd }} daemon status"
   environment: *lmstudio_cli_env
   register: lms_daemon_status_final
   changed_when: false
@@ -89,8 +89,8 @@
       ({{ lmstudio_daemon_status_poll_attempts | default(24) }} status polls every
       {{ lmstudio_daemon_status_poll_interval | default(10) }}s per attempt).
       Quit the LM Studio GUI app if it is open, then run manually:
-      {{ lmstudio_home }}/bin/lms daemon down &&
-      {{ lmstudio_home }}/bin/lms daemon up
+      {{ lmstudio_lms_cmd }} daemon down &&
+      {{ lmstudio_lms_cmd }} daemon up
       Last status: {{ lms_daemon_status_final.stdout | default('(none)') | trim }}
   when:
     - not lms_daemon_already_running | bool

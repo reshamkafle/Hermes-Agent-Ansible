@@ -12,9 +12,8 @@
         target_home: "{{ hermes_home if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['HOME'] | default(lookup('env', 'HOME'))) }}"
         target_user: "{{ hermes_user if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['USER'] | default(ansible_user_id)) }}"
 
-    - name: Set Hermes PATH prefix for user-scoped installs
-      set_fact:
-        hermes_path_prefix: "{{ target_home }}/.lmstudio/bin:{{ target_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+    - name: Resolve LM Studio CLI path and PATH prefix
+      import_tasks: tasks/resolve_lmstudio_cli.yml
 
     - name: Resolve LM Studio model from vars.yml
       import_tasks: tasks/resolve_lmstudio_model.yml
