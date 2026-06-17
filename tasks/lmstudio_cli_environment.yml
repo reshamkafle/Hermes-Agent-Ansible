@@ -1,0 +1,13 @@
+---
+# Shared environment block for all lms CLI invocations.
+# Requires: target_home, hermes_path_prefix, hermes_model_api_key
+# Sets: lmstudio_cli_env
+
+- name: Define LM Studio CLI environment
+  set_fact:
+    lmstudio_cli_env:
+      HOME: "{{ target_home }}"
+      PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+      LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+      TERM: dumb
+      NO_COLOR: "1"

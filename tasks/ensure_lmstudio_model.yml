@@ -1,9 +1,12 @@
 ---
-# Download the configured LM Studio model when missing on disk.
+# Download the configured LM Studio model and verify it exists on disk before load.
 # Requires: lmstudio_home, lmstudio_lms_cmd, target_home, hermes_path_prefix, lmstudio_effective_model,
 #           lmstudio_model_base_id, lmstudio_model_download_target, lmstudio_get_cli_flags,
 #           hermes_model_api_key
-# Sets: lmstudio_model_on_disk, lmstudio_runtime_model, lmstudio_disk_model_key, lms_disk_model_keys
+# Sets: lmstudio_model_on_disk, lmstudio_runtime_model, lmstudio_disk_model_key, lmstudio_load_candidates
+
+- name: Define LM Studio CLI environment (model download)
+  import_tasks: lmstudio_cli_environment.yml
 
 - name: Ensure Hermes log directory exists (for lms get output)
   file:
@@ -19,8 +22,8 @@
 - name: Note configured model already on disk
   debug:
     msg: >-
-      LM Studio model already on disk: {{ lmstudio_disk_model_key | default(lmstudio_runtime_model | default(lmstudio_effective_model)) }}
-      (skipping lms get)
+      LM Studio model already on disk: {{ lmstudio_disk_model_key | default('(unresolved)') }}
+      (will still run lms get --yes to ensure download is complete)
   when:
     - lmstudio_model_on_disk | default(false) | bool
     - lmstudio_download_model | default(true) | bool
@@ -30,19 +33,13 @@
     "{{ lmstudio_lms_cmd }}" get {{ lmstudio_model_download_target | quote }}
     {{ lmstudio_get_cli_flags }}
     >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
-  environment: &lmstudio_model_env
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-    TERM: dumb
-    NO_COLOR: "1"
+  environment: "{{ lmstudio_cli_env }}"
   async: 7200
   poll: 60
   register: lms_get_macos
   when:
     - ansible_facts['os_family'] != 'Debian'
     - lmstudio_download_model | default(true) | bool
-    - not (lmstudio_model_on_disk | default(false) | bool)
   become: false
 
 - name: Download LM Studio model (Linux / WSL2)
@@ -50,65 +47,49 @@
     "{{ lmstudio_lms_cmd }}" get {{ lmstudio_model_download_target | quote }}
     {{ lmstudio_get_cli_flags }}
     >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
-  environment: *lmstudio_model_env
+  environment: "{{ lmstudio_cli_env }}"
   async: 7200
   poll: 60
   register: lms_get_linux
   when:
     - ansible_facts['os_family'] == 'Debian'
     - lmstudio_download_model | default(true) | bool
-    - not (lmstudio_model_on_disk | default(false) | bool)
   become: true
   become_user: "{{ target_user }}"
 
-- name: Read LM Studio download log tail on failure
+- name: Read LM Studio download log tail when get command failed
   include_tasks: read_lmstudio_get_log_tail.yml
   when:
     - lmstudio_download_model | default(true) | bool
-    - not (lmstudio_model_on_disk | default(false) | bool)
     - >-
       (
-        (lms_get_macos is defined and (lms_get_macos.failed | default(false) | bool))
-        or (lms_get_linux is defined and (lms_get_linux.failed | default(false) | bool))
+        (lms_get_macos is defined and not (lms_get_macos.skipped | default(false) | bool) and (lms_get_macos.failed | default(false) | bool))
+        or (lms_get_linux is defined and not (lms_get_linux.skipped | default(false) | bool) and (lms_get_linux.failed | default(false) | bool))
       )
 
-- name: Require LM Studio model download to succeed
-  fail:
+- name: Warn when LM Studio model download command failed (will verify on disk next)
+  debug:
     msg: >-
-      `lms get {{ lmstudio_model_download_target }}` failed.
-      Full log: {{ target_home }}/.hermes/logs/lms-get.log
-      Re-run: ./deploy_local.sh
-      Or: {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
-      Community models must use a Hugging Face URL, not org/repo alone.
-      Last log lines:
-      {{ lms_get_log_tail.stdout | default('(log empty or missing)') }}
+      `lms get` returned non-zero; checking whether model is already on disk.
+      Log: {{ target_home }}/.hermes/logs/lms-get.log
+      Last lines: {{ lms_get_log_tail.stdout | default('(empty)') }}
   when:
     - lmstudio_download_model | default(true) | bool
-    - not (lmstudio_model_on_disk | default(false) | bool)
     - >-
       (
-        (lms_get_macos is defined and (lms_get_macos.failed | default(false) | bool))
-        or (lms_get_linux is defined and (lms_get_linux.failed | default(false) | bool))
+        (lms_get_macos is defined and not (lms_get_macos.skipped | default(false) | bool) and (lms_get_macos.failed | default(false) | bool))
+        or (lms_get_linux is defined and not (lms_get_linux.skipped | default(false) | bool) and (lms_get_linux.failed | default(false) | bool))
       )
 
 - name: Wait for LM Studio model to appear on disk after download
   include_tasks: verify_lmstudio_model_on_disk.yml
   vars:
     lmstudio_wait_for_download: true
-  when:
-    - lmstudio_download_model | default(true) | bool
-    - not (lmstudio_model_on_disk | default(false) | bool)
-    - >-
-      (
-        (lms_get_macos is defined and not (lms_get_macos.failed | default(false) | bool))
-        or (lms_get_linux is defined and not (lms_get_linux.failed | default(false) | bool))
-      )
+  when: lmstudio_download_model | default(true) | bool
 
 - name: Verify configured LM Studio model is on disk before load
   include_tasks: verify_lmstudio_model_on_disk.yml
-  when:
-    - lmstudio_load_model | default(true) | bool
-    - not (lmstudio_model_on_disk | default(false) | bool)
+  when: lmstudio_load_model | default(true) | bool
 
 - name: Read LM Studio download log before on-disk failure
   include_tasks: read_lmstudio_get_log_tail.yml
@@ -119,8 +100,8 @@
 - name: Require configured LM Studio model on disk
   fail:
     msg: >-
-      LM Studio model {{ lmstudio_model_base_id }} is not on disk.
-      Deploy automatically runs:
+      LM Studio model {{ lmstudio_model_base_id }} is not on disk after automated download.
+      Command run:
       {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
       Check download log: {{ target_home }}/.hermes/logs/lms-get.log
       Models found on disk: {{ lms_disk_model_keys | default([]) | join(', ') if (lms_disk_model_keys | default([]) | length > 0) else '(none)' }}

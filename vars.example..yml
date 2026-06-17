@@ -10,7 +10,7 @@ hermes_home: "/home/hermes"
 # Used as Hermes model.default on Darwin. Change only here; playbooks read vars.yml.
 # Do NOT use short aliases like google/gemma-4-12b on macOS: `lms get --mlx` resolves
 # them to an LM Studio staff pick (often gemma-4-e2b) which may fail to download.
-# Playbooks auto-wrap org/repo as https://huggingface.co/... for `lms get --yes`.
+# Playbooks auto-wrap org/repo as https://huggingface.co/... for `lms get --mlx --yes`.
 lmstudio_model: "lmstudio-community/gemma-4-12B-it-MLX-4bit"
 # Optional explicit download URL (overrides auto-wrap). Use when artifact resolution fails.
 # lmstudio_model_download_url: "https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit"
@@ -18,14 +18,14 @@ lmstudio_model: "lmstudio-community/gemma-4-12B-it-MLX-4bit"
 lmstudio_model_linux: "google/gemma-4-12b@Q4_K_M"
 # Download model during deploy (`lms get`). Set false if you already downloaded manually.
 lmstudio_download_model: true
-# Poll up to this many times (× lmstudio_download_poll_interval) for model to appear after `lms get`.
+# Poll up to this many times (× lmstudio_wait_delay) for model to appear after `lms get`.
 lmstudio_wait_retries: 36
 lmstudio_wait_delay: 10
 # OpenAI-compatible API URL for Hermes (custom provider) and ~/.hermes/.env.
 lmstudio_base_url: "http://127.0.0.1:1234/v1"
 # Port for `lms server start` (must match lmstudio_base_url).
 lmstudio_server_port: 1234
-# Download and load the model during deploy (`lms get` / `lms load`).
+# Load the model into memory during deploy (`lms load`).
 lmstudio_load_model: true
 # Start the LM Studio API server after deploy.
 lmstudio_start_server: true

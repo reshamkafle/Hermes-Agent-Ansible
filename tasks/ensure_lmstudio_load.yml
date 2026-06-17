@@ -1,9 +1,12 @@
 ---
 # Load the configured LM Studio model into memory when not already loaded.
 # Requires: lmstudio_home, lmstudio_lms_cmd, target_home, target_user, hermes_path_prefix,
-#           lmstudio_effective_model, lmstudio_model_base_id, lmstudio_runtime_model,
+#           lmstudio_model_base_id, lmstudio_disk_model_key, lmstudio_load_candidates,
 #           hermes_model_api_key
-# Sets: lmstudio_model_loaded, lmstudio_runtime_model (refreshed from disk when needed)
+# Sets: lmstudio_model_loaded
+
+- name: Define LM Studio CLI environment (model load)
+  import_tasks: lmstudio_cli_environment.yml
 
 - name: Ensure Hermes log directory exists (for lms load output)
   file:
@@ -26,33 +29,29 @@
 
 - name: Build LM Studio model match needles for loaded-model detection
   set_fact:
-    lmstudio_model_slug: "{{ lmstudio_model_base_id.split('/')[-1] | lower }}"
-    lmstudio_load_target: "{{ lmstudio_disk_model_key }}"
     lmstudio_match_needles: >-
       {{
-        [
-          lmstudio_model_base_id | lower,
-          (lmstudio_model_base_id.split('/')[-1] | lower),
-          (lmstudio_disk_model_key | lower),
-          (lmstudio_disk_model_key | lower | regex_replace(':.*$', ''))
-        ] | unique | reject('equalto', '') | list
+        (
+          lmstudio_load_candidates | default([lmstudio_disk_model_key])
+          + [lmstudio_model_base_id, lmstudio_model_base_id.split('/')[-1]]
+        )
+        | map('string')
+        | map('lower')
+        | map('regex_replace', ':.*$', '')
+        | unique
+        | reject('equalto', '')
+        | list
       }}
 
 - name: Show LM Studio model load plan
   debug:
     msg: >-
-      lms load target: {{ lmstudio_load_target }} --yes |
+      lms load candidates (in order): {{ lmstudio_load_candidates | default([]) | join(' → ') }} |
       match needles: {{ lmstudio_match_needles | join(', ') }}
-
 
 - name: List LM Studio models loaded in memory
   command: "{{ lmstudio_lms_cmd }} ps --json"
-  environment:
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-    TERM: dumb
-    NO_COLOR: "1"
+  environment: "{{ lmstudio_cli_env }}"
   register: lms_ps_json
   changed_when: false
   failed_when: false
@@ -80,23 +79,36 @@
 - name: Note configured model already loaded in memory
   debug:
     msg: >-
-      LM Studio model already loaded:
-      {{ lmstudio_load_target }}
-      (skipping lms load)
+      LM Studio model already loaded (skipping lms load).
+      Candidates were: {{ lmstudio_load_candidates | default([]) | join(', ') }}
   when: lmstudio_model_already_loaded | default(false) | bool
 
-- name: Load LM Studio model into memory (macOS)
-  shell: >-
-    "{{ lmstudio_lms_cmd }}" load
-    {{ lmstudio_load_target | quote }}
-    --yes
-    >> "{{ target_home }}/.hermes/logs/lms-load.log" 2>&1
-  environment:
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-    TERM: dumb
-    NO_COLOR: "1"
+- name: Load LM Studio model into memory (macOS, try each candidate key)
+  shell: |
+    set -o pipefail
+    LOG="{{ target_home }}/.hermes/logs/lms-load.log"
+    LMS="{{ lmstudio_lms_cmd }}"
+    SLUG="{{ lmstudio_model_slug | default(lmstudio_model_base_id.split('/')[-1] | lower) }}"
+    load_one() {
+      local key="$1"
+      echo "==> lms load $key --yes" >> "$LOG"
+      if "$LMS" load "$key" --yes >> "$LOG" 2>&1; then
+        if "$LMS" ps --json | grep -Eiq "$SLUG"; then
+          echo "==> loaded: $key" >> "$LOG"
+          return 0
+        fi
+      fi
+      echo "==> load failed for: $key" >> "$LOG"
+      return 1
+    }
+    {% for key in lmstudio_load_candidates | default([lmstudio_disk_model_key]) %}
+    if load_one {{ key | quote }}; then exit 0; fi
+    {% endfor %}
+    echo "==> all load candidates failed" >> "$LOG"
+    exit 1
+  args:
+    executable: /bin/bash
+  environment: "{{ lmstudio_cli_env }}"
   async: "{{ lmstudio_load_async_seconds | default(3600) }}"
   poll: "{{ lmstudio_load_poll_interval | default(30) }}"
   register: lms_load_macos
@@ -105,18 +117,32 @@
     - not (lmstudio_model_already_loaded | default(false) | bool)
   become: false
 
-- name: Load LM Studio model into memory (Linux / WSL2)
-  shell: >-
-    "{{ lmstudio_lms_cmd }}" load
-    {{ lmstudio_load_target | quote }}
-    --yes
-    >> "{{ target_home }}/.hermes/logs/lms-load.log" 2>&1
-  environment:
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-    TERM: dumb
-    NO_COLOR: "1"
+- name: Load LM Studio model into memory (Linux / WSL2, try each candidate key)
+  shell: |
+    set -o pipefail
+    LOG="{{ target_home }}/.hermes/logs/lms-load.log"
+    LMS="{{ lmstudio_lms_cmd }}"
+    SLUG="{{ lmstudio_model_slug | default(lmstudio_model_base_id.split('/')[-1] | lower) }}"
+    load_one() {
+      local key="$1"
+      echo "==> lms load $key --yes" >> "$LOG"
+      if "$LMS" load "$key" --yes >> "$LOG" 2>&1; then
+        if "$LMS" ps --json | grep -Eiq "$SLUG"; then
+          echo "==> loaded: $key" >> "$LOG"
+          return 0
+        fi
+      fi
+      echo "==> load failed for: $key" >> "$LOG"
+      return 1
+    }
+    {% for key in lmstudio_load_candidates | default([lmstudio_disk_model_key]) %}
+    if load_one {{ key | quote }}; then exit 0; fi
+    {% endfor %}
+    echo "==> all load candidates failed" >> "$LOG"
+    exit 1
+  args:
+    executable: /bin/bash
+  environment: "{{ lmstudio_cli_env }}"
   async: "{{ lmstudio_load_async_seconds | default(3600) }}"
   poll: "{{ lmstudio_load_poll_interval | default(30) }}"
   register: lms_load_linux
@@ -145,12 +171,7 @@
 
 - name: Re-check LM Studio models loaded in memory after load
   command: "{{ lmstudio_lms_cmd }} ps --json"
-  environment:
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-    TERM: dumb
-    NO_COLOR: "1"
+  environment: "{{ lmstudio_cli_env }}"
   register: lms_ps_after_load
   changed_when: false
   failed_when: false
@@ -187,7 +208,7 @@
       }}
 
 - name: Read LM Studio load log tail on failure
-  command: tail -n 40 "{{ target_home }}/.hermes/logs/lms-load.log"
+  command: tail -n 50 "{{ target_home }}/.hermes/logs/lms-load.log"
   register: lms_load_log_tail
   changed_when: false
   failed_when: false
@@ -205,15 +226,15 @@
 - name: Require LM Studio model load to succeed
   fail:
     msg: >-
-      `lms load {{ lmstudio_load_target }} --yes` failed.
+      `lms load` failed for all candidate keys:
+      {{ lmstudio_load_candidates | default([]) | join(', ') }}.
       Load command exit code:
       {{ lms_load_macos.rc | default(lms_load_linux.rc | default('n/a')) }}.
       Full log: {{ target_home }}/.hermes/logs/lms-load.log
       Last `lms ps --json`: {{ lms_ps_after_load_debug | default('(none)') }}
       Re-run: ./deploy_local.sh
-      Or: {{ lmstudio_lms_cmd }} load {{ lmstudio_load_target }} --yes
-      Then verify with: {{ lmstudio_lms_cmd }} ps --json
       If guardrails block loading, set modelLoadingGuardrails mode to "off" in LM Studio settings.
+      If MLX runtime is missing, open LM Studio → Settings → Runtime → update MLX engine.
       Last log lines:
       {{ lms_load_log_tail.stdout | default('(log empty or missing)') }}
   when:

@@ -22,5 +22,16 @@
 - name: Ensure LM Studio headless daemon is running
   import_tasks: ensure_lmstudio_daemon.yml
 
+- name: Update LM Studio daemon and runtimes before model download
+  command: "{{ lmstudio_lms_cmd }} daemon update"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
 - name: Start LM Studio API server
   import_tasks: ensure_lmstudio_server.yml

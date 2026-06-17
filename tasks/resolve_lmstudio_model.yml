@@ -48,14 +48,8 @@
       }}
     lmstudio_get_cli_flags: >-
       {{
-        '--yes'
-        if (
-          (lmstudio_model_download_url | default('') | trim | length > 0)
-          or (lmstudio_effective_model is match('^https?://'))
-          or ('/' in lmstudio_effective_model)
-        )
-        else (
-          '--gguf --yes' if (ansible_facts['os_family'] == 'Debian') else '--mlx --yes'
+        (
+          '--mlx --yes' if (ansible_facts['os_family'] != 'Debian') else '--gguf --yes'
         )
       }}
 
