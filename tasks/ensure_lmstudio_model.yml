@@ -1,8 +1,9 @@
 ---
 # Download the configured LM Studio model when missing on disk.
 # Requires: lmstudio_home, target_home, hermes_path_prefix, lmstudio_effective_model,
-#           lmstudio_model_base_id, hermes_model_api_key
-# Sets: lmstudio_model_on_disk
+#           lmstudio_model_base_id, lmstudio_model_download_target, lmstudio_get_cli_flags,
+#           hermes_model_api_key
+# Sets: lmstudio_model_on_disk, lmstudio_runtime_model
 
 - name: Ensure Hermes log directory exists (for lms get output)
   file:
@@ -26,30 +27,61 @@
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
+- name: Parse LM Studio model keys from disk listing
+  set_fact:
+    lms_disk_model_keys: >-
+      {{
+        (lms_ls_json.stdout | from_json | default([]))
+        | map(attribute='modelKey')
+        | map('string')
+        | list
+      }}
+  when: lms_ls_json.rc | default(1) == 0
+
+- name: Default empty LM Studio disk model key list
+  set_fact:
+    lms_disk_model_keys: []
+  when: lms_ls_json.rc | default(1) != 0
+
 - name: Check if configured model is already on disk
   set_fact:
     lmstudio_model_on_disk: >-
       {{
-        (lmstudio_effective_model in (lms_ls_json.stdout | default('')))
-        or (lmstudio_model_base_id in (lms_ls_json.stdout | default('')))
+        (
+          lms_disk_model_keys
+          | select('equalto', lmstudio_effective_model)
+          | list
+          | length > 0
+        )
+        or (
+          lms_disk_model_keys
+          | map('lower')
+          | select('equalto', lmstudio_model_base_id | lower)
+          | list
+          | length > 0
+        )
       }}
-  when: lms_ls_json.rc | default(1) == 0
 
-- name: Assume model is not on disk when listing failed
+- name: Resolve LM Studio runtime model key from disk listing
   set_fact:
-    lmstudio_model_on_disk: false
-  when: lms_ls_json.rc | default(1) != 0
+    lmstudio_runtime_model: "{{ item }}"
+  loop: "{{ lms_disk_model_keys }}"
+  when: item | lower == (lmstudio_model_base_id | lower)
+  loop_control:
+    label: "{{ item }}"
 
 - name: Note configured model already on disk
   debug:
-    msg: "LM Studio model already on disk: {{ lmstudio_effective_model }} (skipping lms get)"
+    msg: >-
+      LM Studio model already on disk: {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}
+      (skipping lms get)
   when:
     - lmstudio_model_on_disk | default(false) | bool
     - lmstudio_download_model | default(true) | bool
 
-- name: Download LM Studio model (macOS — MLX)
+- name: Download LM Studio model (macOS)
   shell: >-
-    "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_effective_model | quote }}
+    "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_model_download_target | quote }}
     {{ lmstudio_get_cli_flags }}
     >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
   environment: *lmstudio_model_env
@@ -62,9 +94,9 @@
     - not (lmstudio_model_on_disk | default(false) | bool)
   become: false
 
-- name: Download LM Studio model (Linux / WSL2 — GGUF)
+- name: Download LM Studio model (Linux / WSL2)
   shell: >-
-    "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_effective_model | quote }}
+    "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_model_download_target | quote }}
     {{ lmstudio_get_cli_flags }}
     >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
   environment: *lmstudio_model_env
@@ -77,6 +109,46 @@
     - not (lmstudio_model_on_disk | default(false) | bool)
   become: true
   become_user: "{{ target_user }}"
+
+- name: Refresh LM Studio model list after download
+  command: "{{ lmstudio_home }}/bin/lms ls --json --llm"
+  environment: *lmstudio_model_env
+  register: lms_ls_json_after_get
+  changed_when: false
+  failed_when: false
+  when:
+    - lmstudio_download_model | default(true) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)
+    - >-
+      (
+        (lms_get_macos is defined and not (lms_get_macos.failed | default(false) | bool))
+        or (lms_get_linux is defined and not (lms_get_linux.failed | default(false) | bool))
+      )
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Parse LM Studio model keys after download
+  set_fact:
+    lms_disk_model_keys: >-
+      {{
+        (lms_ls_json_after_get.stdout | from_json | default([]))
+        | map(attribute='modelKey')
+        | map('string')
+        | list
+      }}
+  when:
+    - lms_ls_json_after_get is defined
+    - lms_ls_json_after_get.rc | default(1) == 0
+
+- name: Resolve LM Studio runtime model key after download
+  set_fact:
+    lmstudio_runtime_model: "{{ item }}"
+  loop: "{{ lms_disk_model_keys | default([]) }}"
+  when:
+    - lms_ls_json_after_get is defined
+    - item | lower == (lmstudio_model_base_id | lower)
+  loop_control:
+    label: "{{ item }}"
 
 - name: Read LM Studio download log tail on failure
   command: tail -n 40 "{{ target_home }}/.hermes/logs/lms-get.log"
@@ -95,12 +167,11 @@
 - name: Require LM Studio model download to succeed
   fail:
     msg: >-
-      `lms get {{ lmstudio_effective_model }}` failed.
+      `lms get {{ lmstudio_model_download_target }}` failed.
       Full log: {{ target_home }}/.hermes/logs/lms-get.log
       Try manually:
-      {{ lmstudio_home }}/bin/lms get {{ lmstudio_effective_model }} {{ lmstudio_get_cli_flags }}.
-      Short aliases like google/gemma-4-12b can resolve to the wrong MLX staff pick;
-      use a full repo path (e.g. lmstudio-community/gemma-4-12B-it-MLX-4bit) in vars.yml.
+      {{ lmstudio_home }}/bin/lms get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
+      Community models must use a Hugging Face URL, not org/repo alone.
       Last log lines:
       {{ lms_get_log_tail.stdout | default('(log empty or missing)') }}
   when:

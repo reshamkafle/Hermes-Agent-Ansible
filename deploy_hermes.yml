@@ -108,7 +108,7 @@
       import_tasks: tasks/ensure_lmstudio_model.yml
 
     - name: Load LM Studio model into memory (macOS)
-      command: "{{ lmstudio_home }}/bin/lms load {{ lmstudio_effective_model }}"
+      command: "{{ lmstudio_home }}/bin/lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
       environment:
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
@@ -123,7 +123,7 @@
       failed_when: false
 
     - name: Load LM Studio model into memory (Linux / WSL2)
-      command: "{{ lmstudio_home }}/bin/lms load {{ lmstudio_effective_model }}"
+      command: "{{ lmstudio_home }}/bin/lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
       environment:
         HOME: "{{ target_home }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
@@ -141,7 +141,7 @@
     - name: Require LM Studio model load to succeed
       fail:
         msg: >-
-          `lms load {{ lmstudio_effective_model }}` failed.
+          `lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}` failed.
           Update LM Studio to the latest version (Gemma 4 MLX needs a recent mlx-engine).
           See https://lmstudio.ai/models/gemma-4
           CLI output: {{ (lms_load_macos.stdout | default('')) ~ (lms_load_macos.stderr | default('')) ~ (lms_load_linux.stdout | default('')) ~ (lms_load_linux.stderr | default('')) | trim }}

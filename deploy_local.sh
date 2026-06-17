@@ -74,7 +74,9 @@ for playbook in "${PLAYBOOKS[@]}"; do
       echo "Last 20 lines:"
       tail -n 20 "$lms_log"
     else
-      echo "If model download failed, check: $lms_log (after re-run)"
+      echo "If model download failed, try manually:"
+      echo "  lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
+      echo "Log after re-run: $lms_log"
     fi
     exit 1
   fi

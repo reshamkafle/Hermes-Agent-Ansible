@@ -10,7 +10,10 @@ hermes_home: "/home/hermes"
 # Used as Hermes model.default on Darwin. Change only here; playbooks read vars.yml.
 # Do NOT use short aliases like google/gemma-4-12b on macOS: `lms get --mlx` resolves
 # them to an LM Studio staff pick (often gemma-4-e2b) which may fail to download.
+# Playbooks auto-wrap org/repo as https://huggingface.co/... for `lms get --yes`.
 lmstudio_model: "lmstudio-community/gemma-4-12B-it-MLX-4bit"
+# Optional explicit download URL (overrides auto-wrap). Use when artifact resolution fails.
+# lmstudio_model_download_url: "https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit"
 # Linux / WSL2 — GGUF quant (MLX does not run on Linux).
 lmstudio_model_linux: "google/gemma-4-12b@Q4_K_M"
 # Download model during deploy (`lms get`). Set false if you already downloaded manually.
