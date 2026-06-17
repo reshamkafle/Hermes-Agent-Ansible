@@ -6,10 +6,11 @@ hermes_user: "hermes"
 hermes_home: "/home/hermes"
 
 # --- LM Studio (local LLM) ---
-# macOS / Apple Silicon — MLX staff pick (~7.4 GB; good for M4 + 32 GB RAM).
+# macOS / Apple Silicon — explicit MLX repo (~6.7 GB; good for M4 + 32 GB RAM).
 # Used as Hermes model.default on Darwin. Change only here; playbooks read vars.yml.
-# Use a full repo path (user/repo) for unambiguous non-interactive `lms get --yes`.
-lmstudio_model: "google/gemma-4-12b"
+# Do NOT use short aliases like google/gemma-4-12b on macOS: `lms get --mlx` resolves
+# them to an LM Studio staff pick (often gemma-4-e2b) which may fail to download.
+lmstudio_model: "lmstudio-community/gemma-4-12B-it-MLX-4bit"
 # Linux / WSL2 — GGUF quant (MLX does not run on Linux).
 lmstudio_model_linux: "google/gemma-4-12b@Q4_K_M"
 # Download model during deploy (`lms get`). Set false if you already downloaded manually.

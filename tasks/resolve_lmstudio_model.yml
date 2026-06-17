@@ -23,3 +23,31 @@
       {{ lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model }}
     lmstudio_model_base_id: >-
       {{ (lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model).split('@')[0] }}
+
+# Full Hugging Face repo paths (user/repo) must not use --mlx/--gguf; those flags are for
+# short hub aliases and can make `lms get` resolve the wrong staff pick (e.g. e2b vs 12b).
+- name: Set non-interactive lms get flags for the configured model
+  set_fact:
+    lmstudio_get_cli_flags: >-
+      {{
+        '--yes'
+        if (
+          lmstudio_effective_model is search('(?i)(-mlx-|-gguf|/mlx-|/gguf)')
+          or lmstudio_effective_model is search('^lmstudio-community/')
+          or lmstudio_effective_model is search('^mlx-community/')
+        )
+        else (
+          '--gguf --yes' if (ansible_facts['os_family'] == 'Debian') else '--mlx --yes'
+        )
+      }}
+
+- name: Warn when macOS model is a short alias that LM Studio may mis-resolve
+  debug:
+    msg: >-
+      lmstudio_model is "{{ lmstudio_effective_model }}" (a short hub alias).
+      `lms get` with --mlx may resolve to a different staff pick
+      (e.g. lmstudio-community/gemma-4-e2b-it-mlx-4bit instead of 12B).
+      Use a full repo path in vars.yml, e.g. lmstudio-community/gemma-4-12B-it-MLX-4bit.
+  when:
+    - ansible_facts['os_family'] != 'Debian'
+    - lmstudio_get_cli_flags is search('--mlx')

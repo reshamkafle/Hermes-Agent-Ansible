@@ -50,7 +50,7 @@
 - name: Download LM Studio model (macOS — MLX)
   shell: >-
     "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_effective_model | quote }}
-    --mlx --yes
+    {{ lmstudio_get_cli_flags }}
     >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
   environment: *lmstudio_model_env
   async: 7200
@@ -65,7 +65,7 @@
 - name: Download LM Studio model (Linux / WSL2 — GGUF)
   shell: >-
     "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_effective_model | quote }}
-    --gguf --yes
+    {{ lmstudio_get_cli_flags }}
     >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
   environment: *lmstudio_model_env
   async: 7200
@@ -98,8 +98,9 @@
       `lms get {{ lmstudio_effective_model }}` failed.
       Full log: {{ target_home }}/.hermes/logs/lms-get.log
       Try manually:
-      {{ lmstudio_home }}/bin/lms get {{ lmstudio_effective_model }} --mlx --yes
-      (macOS) or add --gguf on Linux.
+      {{ lmstudio_home }}/bin/lms get {{ lmstudio_effective_model }} {{ lmstudio_get_cli_flags }}.
+      Short aliases like google/gemma-4-12b can resolve to the wrong MLX staff pick;
+      use a full repo path (e.g. lmstudio-community/gemma-4-12B-it-MLX-4bit) in vars.yml.
       Last log lines:
       {{ lms_get_log_tail.stdout | default('(log empty or missing)') }}
   when:
