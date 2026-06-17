@@ -69,14 +69,22 @@ for playbook in "${PLAYBOOKS[@]}"; do
     echo
     echo "Error: $playbook failed."
     lms_log="${HOME}/.hermes/logs/lms-get.log"
-    if [[ -f "$lms_log" ]]; then
+    lms_load_log="${HOME}/.hermes/logs/lms-load.log"
+    if [[ -f "$lms_load_log" ]]; then
+      echo "LM Studio load log: $lms_load_log"
+      echo "Last 20 lines:"
+      tail -n 20 "$lms_load_log"
+    elif [[ -f "$lms_log" ]]; then
       echo "LM Studio download log: $lms_log"
       echo "Last 20 lines:"
       tail -n 20 "$lms_log"
     else
       echo "If model download failed, try manually:"
       echo "  lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
-      echo "Log after re-run: $lms_log"
+      echo "If model load failed or hung, try:"
+      echo "  lms load lmstudio-community/gemma-4-12B-it-MLX-4bit --yes"
+      echo "  lms ps"
+      echo "Logs after re-run: $lms_load_log or $lms_log"
     fi
     exit 1
   fi

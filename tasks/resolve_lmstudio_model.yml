@@ -64,7 +64,8 @@
     msg: >-
       vars.yml model: {{ lmstudio_effective_model }} |
       download: lms get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }} |
-      load/config key: {{ lmstudio_runtime_model }}
+      load/config key: {{ lmstudio_runtime_model }} |
+      load: lms load {{ lmstudio_runtime_model }} --yes
 
 - name: Warn when macOS model is a short alias that LM Studio may mis-resolve
   debug:

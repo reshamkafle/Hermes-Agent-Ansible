@@ -252,6 +252,8 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | `lmstudio_base_url` | LM Studio OpenAI-compatible API URL (default `http://127.0.0.1:1234/v1`) |
 | `lmstudio_server_port` | Port for `lms server start` (default `1234`) |
 | `lmstudio_download_model` | Run `lms get --yes` during deploy (default `true`; skips if model already on disk) |
+| `lmstudio_load_model` | Run `lms load --yes` during deploy (default `true`; skips if model already in memory) |
+| `lmstudio_load_poll_attempts` / `lmstudio_load_poll_interval` | Poll `lms ps` while loading (default 120 × 15s = 30 min max) |
 | `lmstudio_model_download_url` | Optional override; defaults to `https://huggingface.co/<lmstudio_model>` for org/repo IDs |
 | `hermes_model_provider` | Hermes provider for LM Studio (default `custom`) |
 | `hermes_model_api_key` | LM Studio API token when auth is on; use `lm-studio` when auth is off |
@@ -270,6 +272,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
 | LM Studio 401 / auth errors | Enable token in LM Studio Developer → Require Authentication → Manage Tokens; set matching value in `hermes_model_api_key` |
 | `lms get` garbled output / deploy fails at model download | Playbooks download via Hugging Face URL: `lms get https://huggingface.co/<org>/<repo> --yes`. Log: `~/.hermes/logs/lms-get.log` |
+| Deploy stuck on `lms load` | Playbooks use `lms load --yes` and poll `lms ps` instead of blocking on the CLI. Log: `~/.hermes/logs/lms-load.log`. First load of a 12B MLX model can take 5–15 min — watch with `tail -f ~/.hermes/logs/lms-load.log` |
 | `Failed to resolve artifact lmstudio-community/gemma-4-e2b-...` | LM Studio's artifact resolver mis-picked a staff model. Playbooks now download via `https://huggingface.co/<org>/<repo>`. Re-run `./deploy_local.sh` or run `lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit --yes` manually |
 | Gemma 4 MLX load fails | Update LM Studio to latest; Gemma 4 needs recent mlx-engine. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
 | Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for LM Studio. Check logs in `~/.hermes/logs/` |
@@ -287,5 +290,5 @@ deploy_local.sh            deploy_all.sh            start_gateway.sh   start_gat
 test_telegram.sh           test_lmstudio_gateway.sh test_hermes_daily_digest.sh
 smoke_test_telegram.yml    smoke_test_lmstudio_gateway.yml smoke_test_hermes_daily_digest.yml
 scripts/diagnose_gateway.sh    scripts/read_hermes_start_agents.sh
-tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    tasks/diagnose_hermes_gateway.yml    tasks/ensure_lmstudio_model.yml    templates/*.j2    vars.yml (from vars.example..yml)
+tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    tasks/diagnose_hermes_gateway.yml    tasks/ensure_lmstudio_model.yml    tasks/ensure_lmstudio_load.yml    templates/*.j2    vars.yml (from vars.example..yml)
 ```

@@ -33,6 +33,10 @@ lmstudio_daemon_status_poll_attempts: 24
 lmstudio_daemon_status_poll_interval: 10
 lmstudio_daemon_up_async_seconds: 300
 lmstudio_daemon_up_retries: 3
+# Model load (see tasks/ensure_lmstudio_load.yml).
+lmstudio_load_async_seconds: 3600
+lmstudio_load_poll_attempts: 120
+lmstudio_load_poll_interval: 15
 
 # Hermes → LM Studio routing (~/.hermes/config.yaml).
 hermes_model_provider: "custom"

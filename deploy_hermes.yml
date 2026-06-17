@@ -107,51 +107,9 @@
     - name: Download LM Studio model when missing on disk
       import_tasks: tasks/ensure_lmstudio_model.yml
 
-    - name: Load LM Studio model into memory (macOS)
-      command: "{{ lmstudio_home }}/bin/lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
-      environment:
-        HOME: "{{ target_home }}"
-        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-        TERM: dumb
-        NO_COLOR: "1"
-      register: lms_load_macos
-      when:
-        - ansible_facts['os_family'] != 'Debian'
-        - lmstudio_load_model | default(true) | bool
-      become: false
-      failed_when: false
-
-    - name: Load LM Studio model into memory (Linux / WSL2)
-      command: "{{ lmstudio_home }}/bin/lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
-      environment:
-        HOME: "{{ target_home }}"
-        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-        TERM: dumb
-        NO_COLOR: "1"
-      register: lms_load_linux
-      when:
-        - ansible_facts['os_family'] == 'Debian'
-        - lmstudio_load_model | default(true) | bool
-      become: true
-      become_user: "{{ target_user }}"
-      failed_when: false
-
-    - name: Require LM Studio model load to succeed
-      fail:
-        msg: >-
-          `lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}` failed.
-          Update LM Studio to the latest version (Gemma 4 MLX needs a recent mlx-engine).
-          See https://lmstudio.ai/models/gemma-4
-          CLI output: {{ (lms_load_macos.stdout | default('')) ~ (lms_load_macos.stderr | default('')) ~ (lms_load_linux.stdout | default('')) ~ (lms_load_linux.stderr | default('')) | trim }}
-      when:
-        - lmstudio_load_model | default(true) | bool
-        - >-
-          (
-            (lms_load_macos is defined and (lms_load_macos.rc | default(0) != 0))
-            or (lms_load_linux is defined and (lms_load_linux.rc | default(0) != 0))
-          )
+    - name: Load LM Studio model into memory
+      import_tasks: tasks/ensure_lmstudio_load.yml
+      when: lmstudio_load_model | default(true) | bool
 
     - name: Start LM Studio API server (macOS)
       command: "{{ lmstudio_home }}/bin/lms server start --port {{ lmstudio_server_port | default(1234) }}"
