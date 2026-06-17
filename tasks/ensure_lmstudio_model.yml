@@ -1,0 +1,112 @@
+---
+# Download the configured LM Studio model when missing on disk.
+# Requires: lmstudio_home, target_home, hermes_path_prefix, lmstudio_effective_model,
+#           lmstudio_model_base_id, hermes_model_api_key
+# Sets: lmstudio_model_on_disk
+
+- name: Ensure Hermes log directory exists (for lms get output)
+  file:
+    path: "{{ target_home }}/.hermes/logs"
+    state: directory
+    mode: '0755'
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: List LM Studio models on disk
+  command: "{{ lmstudio_home }}/bin/lms ls --json --llm"
+  environment: &lmstudio_model_env
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+    TERM: dumb
+    NO_COLOR: "1"
+  register: lms_ls_json
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Check if configured model is already on disk
+  set_fact:
+    lmstudio_model_on_disk: >-
+      {{
+        (lmstudio_effective_model in (lms_ls_json.stdout | default('')))
+        or (lmstudio_model_base_id in (lms_ls_json.stdout | default('')))
+      }}
+  when: lms_ls_json.rc | default(1) == 0
+
+- name: Assume model is not on disk when listing failed
+  set_fact:
+    lmstudio_model_on_disk: false
+  when: lms_ls_json.rc | default(1) != 0
+
+- name: Note configured model already on disk
+  debug:
+    msg: "LM Studio model already on disk: {{ lmstudio_effective_model }} (skipping lms get)"
+  when:
+    - lmstudio_model_on_disk | default(false) | bool
+    - lmstudio_download_model | default(true) | bool
+
+- name: Download LM Studio model (macOS — MLX)
+  shell: >-
+    "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_effective_model | quote }}
+    --mlx --yes
+    >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
+  environment: *lmstudio_model_env
+  async: 7200
+  poll: 60
+  register: lms_get_macos
+  when:
+    - ansible_facts['os_family'] != 'Debian'
+    - lmstudio_download_model | default(true) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)
+  become: false
+
+- name: Download LM Studio model (Linux / WSL2 — GGUF)
+  shell: >-
+    "{{ lmstudio_home }}/bin/lms" get {{ lmstudio_effective_model | quote }}
+    --gguf --yes
+    >> "{{ target_home }}/.hermes/logs/lms-get.log" 2>&1
+  environment: *lmstudio_model_env
+  async: 7200
+  poll: 60
+  register: lms_get_linux
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - lmstudio_download_model | default(true) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)
+  become: true
+  become_user: "{{ target_user }}"
+
+- name: Read LM Studio download log tail on failure
+  command: tail -n 40 "{{ target_home }}/.hermes/logs/lms-get.log"
+  register: lms_get_log_tail
+  changed_when: false
+  failed_when: false
+  when:
+    - lmstudio_download_model | default(true) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)
+    - >-
+      (
+        (lms_get_macos is defined and (lms_get_macos.failed | default(false) | bool))
+        or (lms_get_linux is defined and (lms_get_linux.failed | default(false) | bool))
+      )
+
+- name: Require LM Studio model download to succeed
+  fail:
+    msg: >-
+      `lms get {{ lmstudio_effective_model }}` failed.
+      Full log: {{ target_home }}/.hermes/logs/lms-get.log
+      Try manually:
+      {{ lmstudio_home }}/bin/lms get {{ lmstudio_effective_model }} --mlx --yes
+      (macOS) or add --gguf on Linux.
+      Last log lines:
+      {{ lms_get_log_tail.stdout | default('(log empty or missing)') }}
+  when:
+    - lmstudio_download_model | default(true) | bool
+    - not (lmstudio_model_on_disk | default(false) | bool)
+    - >-
+      (
+        (lms_get_macos is defined and (lms_get_macos.failed | default(false) | bool))
+        or (lms_get_linux is defined and (lms_get_linux.failed | default(false) | bool))
+      )

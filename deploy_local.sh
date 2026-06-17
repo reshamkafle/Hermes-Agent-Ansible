@@ -63,9 +63,21 @@ for playbook in "${PLAYBOOKS[@]}"; do
   fi
 
   echo "==> Running $playbook"
-  ansible-playbook \
+  if ! ansible-playbook \
     "${EXTRA_PLAYBOOK_ARGS[@]}" \
-    "$playbook"
+    "$playbook"; then
+    echo
+    echo "Error: $playbook failed."
+    lms_log="${HOME}/.hermes/logs/lms-get.log"
+    if [[ -f "$lms_log" ]]; then
+      echo "LM Studio download log: $lms_log"
+      echo "Last 20 lines:"
+      tail -n 20 "$lms_log"
+    else
+      echo "If model download failed, check: $lms_log (after re-run)"
+    fi
+    exit 1
+  fi
   echo
 done
 

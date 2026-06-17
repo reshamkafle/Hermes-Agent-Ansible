@@ -8,9 +8,12 @@ hermes_home: "/home/hermes"
 # --- LM Studio (local LLM) ---
 # macOS / Apple Silicon — MLX staff pick (~7.4 GB; good for M4 + 32 GB RAM).
 # Used as Hermes model.default on Darwin. Change only here; playbooks read vars.yml.
+# Use a full repo path (user/repo) for unambiguous non-interactive `lms get --yes`.
 lmstudio_model: "google/gemma-4-12b"
 # Linux / WSL2 — GGUF quant (MLX does not run on Linux).
 lmstudio_model_linux: "google/gemma-4-12b@Q4_K_M"
+# Download model during deploy (`lms get`). Set false if you already downloaded manually.
+lmstudio_download_model: true
 # OpenAI-compatible API URL for Hermes (custom provider) and ~/.hermes/.env.
 lmstudio_base_url: "http://127.0.0.1:1234/v1"
 # Port for `lms server start` (must match lmstudio_base_url).
