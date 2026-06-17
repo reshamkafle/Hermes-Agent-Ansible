@@ -31,8 +31,8 @@ LMSTUDIO_MODEL="$(read_yaml_value lmstudio_model)"
 LMSTUDIO_MODEL_LINUX="$(read_yaml_value lmstudio_model_linux)"
 LMSTUDIO_API_KEY="$(read_yaml_value hermes_model_api_key)"
 LMSTUDIO_BASE_URL="${LMSTUDIO_BASE_URL:-http://127.0.0.1:1234/v1}"
-LMSTUDIO_MODEL="${LMSTUDIO_MODEL:-your-model}"
-LMSTUDIO_MODEL_LINUX="${LMSTUDIO_MODEL_LINUX:-lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M}"
+LMSTUDIO_MODEL="${LMSTUDIO_MODEL:-google/gemma-4-12b}"
+LMSTUDIO_MODEL_LINUX="${LMSTUDIO_MODEL_LINUX:-google/gemma-4-12b@Q4_K_M}"
 
 if [[ "$(uname -s)" == "Linux" ]]; then
   LMSTUDIO_EFFECTIVE_MODEL="$LMSTUDIO_MODEL_LINUX"

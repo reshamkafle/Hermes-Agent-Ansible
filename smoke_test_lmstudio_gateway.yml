@@ -30,7 +30,7 @@
       set_fact:
         lmstudio_effective_model: >-
           {{
-            lmstudio_model_linux | default('lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M')
+            lmstudio_model_linux | default('google/gemma-4-12b@Q4_K_M')
             if (ansible_facts['os_family'] == 'Debian')
             else lmstudio_model
           }}

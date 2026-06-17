@@ -6,9 +6,9 @@ hermes_user: "hermes"
 hermes_home: "/home/hermes"
 
 # LM Studio model (macOS / Apple Silicon — MLX). Used as model.default on Darwin.
-lmstudio_model: "lmstudio-community/gemma-4-E2B-it-MLX-4bit"
+lmstudio_model: "google/gemma-4-12b"
 # Linux / WSL2 GGUF fallback (MLX does not run on Linux).
-lmstudio_model_linux: "lmstudio-community/gemma-4-E2B-it-GGUF@Q4_K_M"
+lmstudio_model_linux: "google/gemma-4-12b@Q4_K_M"
 lmstudio_base_url: "http://127.0.0.1:1234/v1"
 lmstudio_server_port: 1234
 lmstudio_load_model: true
@@ -17,12 +17,13 @@ lmstudio_start_server: true
 lmstudio_daemon_boot_wait_seconds: 30
 # Quit the LM Studio GUI on macOS before starting the headless daemon (avoids port conflicts).
 lmstudio_quit_gui_before_daemon: true
-# Poll `lms daemon status` after kicking off `daemon up` in the background (up to ~4 min per attempt).
+# Poll `lms daemon status` after `lms daemon up` (up to ~4 min per attempt).
 lmstudio_daemon_status_poll_attempts: 24
 lmstudio_daemon_status_poll_interval: 10
-# Full start cycles when the daemon is still not running after polling.
+# Ansible async timeout for `lms daemon up` (command may block while the daemon boots).
+lmstudio_daemon_up_async_seconds: 300
+# Full down/up cycles when the daemon is still not running after polling.
 lmstudio_daemon_up_retries: 3
-lmstudio_daemon_up_retry_delay: 30
 
 # Hermes model routing (~/.hermes/config.yaml). LM Studio uses OpenAI-compat provider "custom".
 hermes_model_provider: "custom"

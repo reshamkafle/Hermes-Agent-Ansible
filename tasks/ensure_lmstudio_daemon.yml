@@ -41,15 +41,6 @@
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
-- name: Stop LM Studio daemon for clean restart
-  command: "{{ lmstudio_home }}/bin/lms daemon down"
-  environment: *lmstudio_cli_env
-  when: not lms_daemon_already_running | bool
-  changed_when: false
-  failed_when: false
-  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-
 - name: Allow LM Studio CLI to settle after fresh install
   pause:
     seconds: "{{ lmstudio_daemon_boot_wait_seconds | default(30) }}"
@@ -66,36 +57,20 @@
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
-- name: Start LM Studio headless daemon and wait for readiness
-  shell: |
-    LMS="{{ lmstudio_home }}/bin/lms"
-    "$LMS" daemon down >/dev/null 2>&1 || true
-    nohup "$LMS" daemon up >/dev/null 2>&1 &
-    attempts={{ lmstudio_daemon_status_poll_attempts | default(24) }}
-    interval={{ lmstudio_daemon_status_poll_interval | default(10) }}
-    for i in $(seq 1 "$attempts"); do
-      status=$("$LMS" daemon status 2>/dev/null || true)
-      lower=$(printf '%s' "$status" | tr '[:upper:]' '[:lower:]')
-      case "$lower" in
-        *not-running*|*not\ running*) ;;
-        *running*) exit 0 ;;
-      esac
-      sleep "$interval"
-    done
-    echo "Daemon still not running after ${attempts} status polls (${interval}s interval)" >&2
-    "$LMS" daemon status >&2 || true
-    exit 1
-  args:
-    executable: /bin/bash
-  environment: *lmstudio_cli_env
-  register: lms_daemon_start
-  changed_when: false
-  retries: "{{ lmstudio_daemon_up_retries | default(3) }}"
-  delay: "{{ lmstudio_daemon_up_retry_delay | default(30) }}"
-  until: lms_daemon_start.rc == 0
+- name: Initialize LM Studio daemon restart cycle state
+  set_fact:
+    lms_daemon_ready: false
   when: not lms_daemon_already_running | bool
-  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Restart LM Studio headless daemon (lms daemon down / lms daemon up)
+  include_tasks: lmstudio_daemon_restart_cycle.yml
+  loop: "{{ range(1, (lmstudio_daemon_up_retries | default(3) | int) + 1) | list }}"
+  loop_control:
+    loop_var: lmstudio_daemon_attempt
+    label: "attempt {{ lmstudio_daemon_attempt }}/{{ lmstudio_daemon_up_retries | default(3) }}"
+  when:
+    - not lms_daemon_already_running | bool
+    - not (lms_daemon_ready | default(false) | bool)
 
 - name: Re-check LM Studio daemon status after start attempts
   command: "{{ lmstudio_home }}/bin/lms daemon status"
@@ -116,9 +91,7 @@
       Quit the LM Studio GUI app if it is open, then run manually:
       {{ lmstudio_home }}/bin/lms daemon down &&
       {{ lmstudio_home }}/bin/lms daemon up
-      Last start stderr: {{ lms_daemon_start.stderr | default('(none)') | trim }}
+      Last status: {{ lms_daemon_status_final.stdout | default('(none)') | trim }}
   when:
     - not lms_daemon_already_running | bool
-    - lms_daemon_status_final.rc != 0
-      or ('not-running' in (lms_daemon_status_final.stdout | lower))
-      or ('not running' in (lms_daemon_status_final.stdout | lower))
+    - not (lms_daemon_ready | default(false) | bool)

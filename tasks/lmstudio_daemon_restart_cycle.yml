@@ -1,0 +1,56 @@
+---
+# One down + up + status-wait cycle. Sets lms_daemon_ready=true when successful.
+
+- name: Stop LM Studio headless daemon (lms daemon down)
+  command: "{{ lmstudio_home }}/bin/lms daemon down"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Start LM Studio headless daemon (lms daemon up)
+  command: "{{ lmstudio_home }}/bin/lms daemon up"
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  async: "{{ lmstudio_daemon_up_async_seconds | default(300) }}"
+  poll: 0
+  register: lms_daemon_up_job
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Wait for LM Studio daemon to become ready
+  block:
+    - name: Wait for LM Studio daemon to report running
+      command: "{{ lmstudio_home }}/bin/lms daemon status"
+      environment:
+        HOME: "{{ target_home }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+        LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+      register: lms_daemon_poll
+      changed_when: false
+      until: >
+        lms_daemon_poll.rc == 0
+        and ('not-running' not in (lms_daemon_poll.stdout | lower))
+        and ('not running' not in (lms_daemon_poll.stdout | lower))
+      retries: "{{ lmstudio_daemon_status_poll_attempts | default(24) }}"
+      delay: "{{ lmstudio_daemon_status_poll_interval | default(10) }}"
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+      become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+    - name: Mark LM Studio daemon as ready after successful cycle
+      set_fact:
+        lms_daemon_ready: true
+  rescue:
+    - name: Log LM Studio daemon cycle failure
+      debug:
+        msg: >-
+          LM Studio daemon not ready after attempt {{ lmstudio_daemon_attempt | default('?') }}.
+          Will retry `lms daemon down` and `lms daemon up` if attempts remain.
