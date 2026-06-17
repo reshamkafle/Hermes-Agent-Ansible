@@ -4,7 +4,7 @@
 
 - name: Check LM Studio daemon status
   command: "{{ lmstudio_home }}/bin/lms daemon status"
-  environment:
+  environment: &lmstudio_cli_env
     HOME: "{{ target_home }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
     LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
@@ -23,12 +23,27 @@
         and ('not running' not in (lms_daemon_status.stdout | lower))
       }}
 
+- name: Quit LM Studio GUI to avoid headless daemon conflict (macOS)
+  shell: osascript -e 'quit app "LM Studio"' 2>/dev/null || true
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['os_family'] == 'Darwin'
+    - not lms_daemon_already_running | bool
+    - lmstudio_quit_gui_before_daemon | default(true) | bool
+
+- name: Stop LM Studio API server before daemon restart
+  command: "{{ lmstudio_home }}/bin/lms server stop"
+  environment: *lmstudio_cli_env
+  changed_when: false
+  failed_when: false
+  when: not lms_daemon_already_running | bool
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
 - name: Stop LM Studio daemon for clean restart
   command: "{{ lmstudio_home }}/bin/lms daemon down"
-  environment:
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  environment: *lmstudio_cli_env
   when: not lms_daemon_already_running | bool
   changed_when: false
   failed_when: false
@@ -37,48 +52,54 @@
 
 - name: Allow LM Studio CLI to settle after fresh install
   pause:
-    seconds: "{{ lmstudio_daemon_boot_wait_seconds | default(15) }}"
+    seconds: "{{ lmstudio_daemon_boot_wait_seconds | default(30) }}"
   when:
     - not lms_daemon_already_running | bool
     - lmstudio_cli_was_installed | default(false) | bool
 
-- name: Update LM Studio headless daemon binary after fresh install
+- name: Update LM Studio headless daemon binary
   command: "{{ lmstudio_home }}/bin/lms daemon update"
-  environment:
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-  when:
-    - not lms_daemon_already_running | bool
-    - lmstudio_cli_was_installed | default(false) | bool
+  environment: *lmstudio_cli_env
+  when: not lms_daemon_already_running | bool
   changed_when: false
   failed_when: false
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
-- name: Start LM Studio headless daemon
-  shell: >-
-    {{ lmstudio_home }}/bin/lms daemon down >/dev/null 2>&1 || true;
-    {{ lmstudio_home }}/bin/lms daemon up
-  environment:
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
-  register: lms_daemon_up
+- name: Start LM Studio headless daemon and wait for readiness
+  shell: |
+    LMS="{{ lmstudio_home }}/bin/lms"
+    "$LMS" daemon down >/dev/null 2>&1 || true
+    nohup "$LMS" daemon up >/dev/null 2>&1 &
+    attempts={{ lmstudio_daemon_status_poll_attempts | default(24) }}
+    interval={{ lmstudio_daemon_status_poll_interval | default(10) }}
+    for i in $(seq 1 "$attempts"); do
+      status=$("$LMS" daemon status 2>/dev/null || true)
+      lower=$(printf '%s' "$status" | tr '[:upper:]' '[:lower:]')
+      case "$lower" in
+        *not-running*|*not\ running*) ;;
+        *running*) exit 0 ;;
+      esac
+      sleep "$interval"
+    done
+    echo "Daemon still not running after ${attempts} status polls (${interval}s interval)" >&2
+    "$LMS" daemon status >&2 || true
+    exit 1
+  args:
+    executable: /bin/bash
+  environment: *lmstudio_cli_env
+  register: lms_daemon_start
   changed_when: false
   retries: "{{ lmstudio_daemon_up_retries | default(3) }}"
   delay: "{{ lmstudio_daemon_up_retry_delay | default(30) }}"
-  until: lms_daemon_up.rc == 0
+  until: lms_daemon_start.rc == 0
   when: not lms_daemon_already_running | bool
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
 - name: Re-check LM Studio daemon status after start attempts
   command: "{{ lmstudio_home }}/bin/lms daemon status"
-  environment:
-    HOME: "{{ target_home }}"
-    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-    LM_API_TOKEN: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  environment: *lmstudio_cli_env
   register: lms_daemon_status_final
   changed_when: false
   failed_when: false
@@ -89,10 +110,13 @@
 - name: Require LM Studio daemon to be running
   fail:
     msg: >-
-      LM Studio daemon did not start after {{ lmstudio_daemon_up_retries | default(3) }} attempts.
+      LM Studio daemon did not start after {{ lmstudio_daemon_up_retries | default(3) }} attempts
+      ({{ lmstudio_daemon_status_poll_attempts | default(24) }} status polls every
+      {{ lmstudio_daemon_status_poll_interval | default(10) }}s per attempt).
       Quit the LM Studio GUI app if it is open, then run manually:
       {{ lmstudio_home }}/bin/lms daemon down &&
       {{ lmstudio_home }}/bin/lms daemon up
+      Last start stderr: {{ lms_daemon_start.stderr | default('(none)') | trim }}
   when:
     - not lms_daemon_already_running | bool
     - lms_daemon_status_final.rc != 0

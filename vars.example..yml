@@ -14,8 +14,13 @@ lmstudio_server_port: 1234
 lmstudio_load_model: true
 lmstudio_start_server: true
 # Seconds to wait after a fresh `lms` install before starting the daemon (first boot can be slow).
-lmstudio_daemon_boot_wait_seconds: 15
-# Retries for `lms daemon up` when the daemon times out on first start.
+lmstudio_daemon_boot_wait_seconds: 30
+# Quit the LM Studio GUI on macOS before starting the headless daemon (avoids port conflicts).
+lmstudio_quit_gui_before_daemon: true
+# Poll `lms daemon status` after kicking off `daemon up` in the background (up to ~4 min per attempt).
+lmstudio_daemon_status_poll_attempts: 24
+lmstudio_daemon_status_poll_interval: 10
+# Full start cycles when the daemon is still not running after polling.
 lmstudio_daemon_up_retries: 3
 lmstudio_daemon_up_retry_delay: 30
 
