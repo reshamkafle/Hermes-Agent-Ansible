@@ -1,7 +1,11 @@
 ---
 # Deploy Hermes config.yaml, .env secrets, and hermes-run.sh wrapper.
-# Requires: target_home, hermes_cmd, hermes_path_prefix
+# Requires: target_home, hermes_cmd, hermes_path_prefix, ansible_facts['os_family']
 # Optional: target_user (for Debian become)
+# Sets (via resolve): lmstudio_effective_model, lmstudio_runtime_model
+
+- name: Resolve LM Studio model identifiers for Hermes config
+  import_tasks: resolve_lmstudio_model.yml
 
 - name: Deploy structured Hermes unified config.yaml
   template:
