@@ -38,17 +38,19 @@ if [[ -n "${TELEGRAM_HOME_CHANNEL:-}" ]] && [[ -z "${_seen[${TELEGRAM_HOME_CHANN
   recipients+=("${TELEGRAM_HOME_CHANNEL}")
 fi
 
-if [[ ${#recipients[@]} -eq 0 ]]; then
+if [[ -z "${recipients[*]:-}" ]]; then
   echo "error: no Telegram recipients (set TELEGRAM_SEND_USERS or TELEGRAM_ALLOWED_USERS in ${HERMES_HOME}/.env)" >&2
   exit 1
 fi
 
+delivered=0
 for rid in "${recipients[@]}"; do
   echo "==> Delivering digest to telegram:${rid}"
   "${HERMES_BIN}" send --to "telegram:${rid}" \
     --subject "Hermes Daily Briefing — full HTML report attached" \
     --file "${DIGEST_HTML}" \
     -q
+  delivered=$((delivered + 1))
 done
 
-echo "==> Digest delivered to ${#recipients[@]} Telegram recipient(s)"
+echo "==> Digest delivered to ${delivered} Telegram recipient(s)"
