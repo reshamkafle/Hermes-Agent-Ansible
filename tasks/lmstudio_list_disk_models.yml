@@ -3,25 +3,12 @@
 # Requires: lmstudio_lms_cmd, lmstudio_cli_env
 # Sets: lms_ls_raw (register-compatible dict with rc, stdout, stderr)
 
-- name: List LM Studio models on disk (--json --llm --variants)
-  command: "{{ lmstudio_lms_cmd }} ls --json --llm --variants"
-  environment: "{{ lmstudio_cli_env }}"
-  register: lms_ls_variants
-  changed_when: false
-  failed_when: false
-  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-
 - name: List LM Studio models on disk (--json --llm)
   command: "{{ lmstudio_lms_cmd }} ls --json --llm"
   environment: "{{ lmstudio_cli_env }}"
   register: lms_ls_llm
   changed_when: false
   failed_when: false
-  when: >-
-    lms_ls_variants.rc | default(1) != 0
-    or (lms_ls_variants.stdout | default('') | trim | length == 0)
-    or not ((lms_ls_variants.stdout | default('') | trim).startswith('['))
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
@@ -32,17 +19,30 @@
   changed_when: false
   failed_when: false
   when: >-
+    lms_ls_llm.rc | default(1) != 0
+    or (lms_ls_llm.stdout | default('') | trim | length == 0)
+    or not ((lms_ls_llm.stdout | default('') | trim).startswith('['))
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: List LM Studio models on disk (--json --llm --variants)
+  command: "{{ lmstudio_lms_cmd }} ls --json --llm --variants"
+  environment: "{{ lmstudio_cli_env }}"
+  register: lms_ls_variants
+  changed_when: false
+  failed_when: false
+  when: >-
     (
-      lms_ls_variants.rc | default(1) != 0
-      or (lms_ls_variants.stdout | default('') | trim | length == 0)
-      or not ((lms_ls_variants.stdout | default('') | trim).startswith('['))
-    )
-    and (
-      lms_ls_llm is not defined
-      or lms_ls_llm.skipped | default(false) | bool
-      or lms_ls_llm.rc | default(1) != 0
+      lms_ls_llm.rc | default(1) != 0
       or (lms_ls_llm.stdout | default('') | trim | length == 0)
       or not ((lms_ls_llm.stdout | default('') | trim).startswith('['))
+    )
+    and (
+      lms_ls_plain is not defined
+      or lms_ls_plain.skipped | default(false) | bool
+      or lms_ls_plain.rc | default(1) != 0
+      or (lms_ls_plain.stdout | default('') | trim | length == 0)
+      or not ((lms_ls_plain.stdout | default('') | trim).startswith('['))
     )
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
@@ -52,28 +52,28 @@
     lms_ls_raw: >-
       {{
         (
-          lms_ls_variants
+          lms_ls_llm
           if (
-            lms_ls_variants.rc | default(1) == 0
-            and (lms_ls_variants.stdout | default('') | trim | length > 0)
-            and ((lms_ls_variants.stdout | default('') | trim).startswith('['))
+            lms_ls_llm.rc | default(1) == 0
+            and (lms_ls_llm.stdout | default('') | trim | length > 0)
+            and ((lms_ls_llm.stdout | default('') | trim).startswith('['))
           )
           else (
-            lms_ls_llm
+            lms_ls_plain
             if (
-              lms_ls_llm is defined
-              and not (lms_ls_llm.skipped | default(false) | bool)
-              and lms_ls_llm.rc | default(1) == 0
-              and (lms_ls_llm.stdout | default('') | trim | length > 0)
-              and ((lms_ls_llm.stdout | default('') | trim).startswith('['))
+              lms_ls_plain is defined
+              and not (lms_ls_plain.skipped | default(false) | bool)
+              and lms_ls_plain.rc | default(1) == 0
+              and (lms_ls_plain.stdout | default('') | trim | length > 0)
+              and ((lms_ls_plain.stdout | default('') | trim).startswith('['))
             )
             else (
-              lms_ls_plain
+              lms_ls_variants
               if (
-                lms_ls_plain is defined
-                and not (lms_ls_plain.skipped | default(false) | bool)
+                lms_ls_variants is defined
+                and not (lms_ls_variants.skipped | default(false) | bool)
               )
-              else lms_ls_variants
+              else lms_ls_llm
             )
           )
         )

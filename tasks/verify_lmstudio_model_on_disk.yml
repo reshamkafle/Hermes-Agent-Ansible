@@ -73,6 +73,7 @@
       `lms ls` rc={{ lms_ls_raw.rc | default('?') }} |
       on disk={{ lmstudio_model_on_disk | default(false) }} |
       primary key={{ lmstudio_disk_model_key | default('(none)') }} |
+      disk paths={{ lms_disk_model_paths | default([]) | join(', ') }} |
       load candidates={{ lmstudio_load_candidates | default([]) | join(', ') }}
 
 - name: Read LM Studio download log before verify failure
@@ -90,7 +91,7 @@
       Match needles tried: {{ lmstudio_match_needles | default([]) | join(', ') }}.
       `lms ls` best rc={{ lms_ls_raw.rc | default('?') }}.
       Daemon status: {{ lms_daemon_verify.stdout | default('') | trim }}
-      Models on disk: {{ lms_disk_model_keys | default([]) | join(', ') if (lms_disk_model_keys | default([]) | length > 0) else '(none)' }}
+      Models on disk: {{ lms_disk_model_paths | default(lms_disk_model_keys | default([])) | join(', ') if ((lms_disk_model_paths | default([]) | length > 0) or (lms_disk_model_keys | default([]) | length > 0)) else '(none)' }}
       Log confirms download: {{ lmstudio_log_confirms_download | default(false) }} |
       log load key: {{ lmstudio_log_load_key | default('(none)') }}
       Download log: {{ target_home }}/.hermes/logs/lms-get.log
@@ -104,7 +105,7 @@
 - name: Warn when LM Studio disk listing command failed (verify)
   debug:
     msg: >-
-      `lms ls --json --llm --variants` failed (rc={{ lms_ls_raw.rc | default('?') }}).
+      `lms ls --json --llm` failed (rc={{ lms_ls_raw.rc | default('?') }}).
       stderr: {{ lms_ls_raw.stderr | default('(empty)') | trim }}
       stdout: {{ lms_ls_raw.stdout | default('(empty)') | trim | truncate(400, True, '...') }}
       Daemon status: {{ lms_daemon_verify.stdout | default('') | trim }}

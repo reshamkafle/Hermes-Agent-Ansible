@@ -104,7 +104,7 @@
       Command run:
       {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
       Check download log: {{ target_home }}/.hermes/logs/lms-get.log
-      Models found on disk: {{ lms_disk_model_keys | default([]) | join(', ') if (lms_disk_model_keys | default([]) | length > 0) else '(none)' }}
+      Models found on disk: {{ lms_disk_model_paths | default(lms_disk_model_keys | default([])) | join(', ') if ((lms_disk_model_paths | default([]) | length > 0) or (lms_disk_model_keys | default([]) | length > 0)) else '(none)' }}
       Last log lines:
       {{ lms_get_log_tail.stdout | default('(log empty or missing)') }}
       Re-run: ./deploy_local.sh

@@ -34,6 +34,7 @@
   debug:
     msg: >-
       lms load candidates (in order): {{ lmstudio_load_candidates | default([]) | join(' → ') }} |
+      disk paths: {{ lms_disk_model_paths | default([]) | join(', ') }} |
       match needles: {{ lmstudio_match_needles | join(', ') }}
 
 - name: List LM Studio models loaded in memory
@@ -70,20 +71,17 @@
       Candidates were: {{ lmstudio_load_candidates | default([]) | join(', ') }}
   when: lmstudio_model_already_loaded | default(false) | bool
 
-- name: Load LM Studio model into memory (macOS, try each candidate key)
+- name: Load LM Studio model into memory (macOS, try each candidate path/key)
   shell: |
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
-    SLUG="{{ lmstudio_model_slug_no_quant | default(lmstudio_disk_model_key | default(lmstudio_model_slug | default(lmstudio_model_base_id.split('/')[-1] | lower))) }}"
     load_one() {
       local key="$1"
       echo "==> lms load $key --yes" >> "$LOG"
       if "$LMS" load "$key" --yes >> "$LOG" 2>&1; then
-        if "$LMS" ps --json | grep -Eiq "$SLUG"; then
-          echo "==> loaded: $key" >> "$LOG"
-          return 0
-        fi
+        echo "==> loaded: $key" >> "$LOG"
+        return 0
       fi
       echo "==> load failed for: $key" >> "$LOG"
       return 1
@@ -107,20 +105,17 @@
     - not (lmstudio_model_already_loaded | default(false) | bool)
   become: false
 
-- name: Load LM Studio model into memory (Linux / WSL2, try each candidate key)
+- name: Load LM Studio model into memory (Linux / WSL2, try each candidate path/key)
   shell: |
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
-    SLUG="{{ lmstudio_model_slug_no_quant | default(lmstudio_disk_model_key | default(lmstudio_model_slug | default(lmstudio_model_base_id.split('/')[-1] | lower))) }}"
     load_one() {
       local key="$1"
       echo "==> lms load $key --yes" >> "$LOG"
       if "$LMS" load "$key" --yes >> "$LOG" 2>&1; then
-        if "$LMS" ps --json | grep -Eiq "$SLUG"; then
-          echo "==> loaded: $key" >> "$LOG"
-          return 0
-        fi
+        echo "==> loaded: $key" >> "$LOG"
+        return 0
       fi
       echo "==> load failed for: $key" >> "$LOG"
       return 1
@@ -219,8 +214,9 @@
 - name: Require LM Studio model load to succeed
   fail:
     msg: >-
-      `lms load` failed for all candidate keys:
+      `lms load` failed for all candidate paths/keys:
       {{ lmstudio_load_candidates | default([]) | join(', ') }}.
+      Disk paths from `lms ls`: {{ lms_disk_model_paths | default([]) | join(', ') | default('(none)') }}.
       Load command exit code:
       {{ lms_load_macos.rc | default(lms_load_linux.rc | default('n/a')) }}.
       Full log: {{ target_home }}/.hermes/logs/lms-load.log

@@ -1,9 +1,10 @@
 ---
-# Parse `lms ls --json` output into model keys and load candidates.
+# Parse `lms ls --json` output into model paths/keys and load candidates.
+# `lms load` fuzzy-matches on model.path (see lmstudio-ai/lms load.ts), not slug aliases.
 # Requires: lms_ls_raw (register result from lms ls), lmstudio_model_base_id
-# Sets: lms_ls_parsed_models, lms_disk_model_keys, lmstudio_model_slug,
-#       lmstudio_disk_model_key, lmstudio_load_candidates, lmstudio_model_on_disk,
-#       lmstudio_runtime_model
+# Sets: lms_ls_parsed_models, lms_ls_flat_models, lms_disk_model_paths, lms_disk_model_keys,
+#       lmstudio_model_slug, lmstudio_disk_model_key, lmstudio_load_candidates,
+#       lmstudio_model_on_disk, lmstudio_runtime_model
 
 - name: Parse LM Studio disk listing JSON
   set_fact:
@@ -20,34 +21,68 @@
       {%- endif -%}
     lmstudio_model_slug: "{{ lmstudio_model_base_id.split('/')[-1] | lower }}"
 
-- name: Build disk model key list from LM Studio listing
+- name: Normalize LM Studio disk listing to flat model entries
   set_fact:
+    lms_ls_flat_models: >-
+      {%- set parsed = lms_ls_parsed_models | default([]) -%}
+      {%- set flat = [] -%}
+      {%- for item in parsed -%}
+        {%- if item.model is defined -%}
+          {%- set _ = flat.append(item.model) -%}
+          {%- for v in item.variants | default([]) -%}
+            {%- if v is mapping -%}
+              {%- set _ = flat.append(v) -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- else -%}
+          {%- set _ = flat.append(item) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ flat }}
+
+- name: Build disk model path and key lists from LM Studio listing
+  set_fact:
+    lms_disk_model_paths: >-
+      {%- set models = lms_ls_flat_models | default([]) -%}
+      {%- set paths = [] -%}
+      {%- for m in models -%}
+        {%- if m.path is defined and (m.path | string | trim | length) > 0 -%}
+          {%- set _ = paths.append(m.path | string) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ paths | unique | list }}
     lms_disk_model_keys: >-
-      {%- set models = lms_ls_parsed_models | default([]) -%}
+      {%- set models = lms_ls_flat_models | default([]) -%}
       {%- set keys = [] -%}
       {%- for m in models -%}
-      {%- for field in ['modelKey', 'key', 'identifier', 'indexedModelIdentifier', 'path'] -%}
-      {%- if m[field] is defined and (m[field] | string | trim | length) > 0 -%}
-      {%- set _ = keys.append(m[field] | string) -%}
-      {%- endif -%}
-      {%- endfor -%}
-      {%- if m.variants is defined -%}
-      {%- for v in m.variants -%}
-      {%- if v is string and (v | trim | length) > 0 -%}
-      {%- set _ = keys.append(v) -%}
-      {%- elif v is mapping -%}
-      {%- for vf in ['modelKey', 'key', 'identifier'] -%}
-      {%- if v[vf] is defined and (v[vf] | string | trim | length) > 0 -%}
-      {%- set _ = keys.append(v[vf] | string) -%}
-      {%- endif -%}
-      {%- endfor -%}
-      {%- endif -%}
-      {%- endfor -%}
-      {%- endif -%}
+        {%- if m.path is defined and (m.path | string | trim | length) > 0 -%}
+          {%- set _ = keys.append(m.path | string) -%}
+        {%- endif -%}
+        {%- for field in ['modelKey', 'key', 'identifier', 'indexedModelIdentifier'] -%}
+          {%- if m[field] is defined and (m[field] | string | trim | length) > 0 -%}
+            {%- set _ = keys.append(m[field] | string) -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {%- if m.variants is defined -%}
+          {%- for v in m.variants -%}
+            {%- if v is string and (v | trim | length) > 0 -%}
+              {%- set _ = keys.append(v) -%}
+            {%- elif v is mapping -%}
+              {%- if v.path is defined and (v.path | string | trim | length) > 0 -%}
+                {%- set _ = keys.append(v.path | string) -%}
+              {%- endif -%}
+              {%- for vf in ['modelKey', 'key', 'identifier'] -%}
+                {%- if v[vf] is defined and (v[vf] | string | trim | length) > 0 -%}
+                  {%- set _ = keys.append(v[vf] | string) -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endif -%}
       {%- endfor -%}
       {{ keys | unique | list }}
 
-- name: Test whether an LM Studio disk key matches the configured model
+- name: Test whether an LM Studio disk path/key matches the configured model
   set_fact:
     lmstudio_key_matches_config: >-
       {%- set key_norm = (item | string | lower | regex_replace('.*/', '')) -%}
@@ -72,7 +107,7 @@
   register: lmstudio_key_match_results
   when: lms_disk_model_keys | default([]) | length > 0
 
-- name: Collect matched LM Studio keys for load
+- name: Collect matched LM Studio paths/keys for load
   set_fact:
     lmstudio_matched_keys: >-
       {{
@@ -85,23 +120,36 @@
       }}
   when: lmstudio_key_match_results is defined
 
-- name: Default empty matched LM Studio key list
+- name: Default empty matched LM Studio path/key list
   set_fact:
     lmstudio_matched_keys: []
   when: lmstudio_key_match_results is not defined
 
-- name: Resolve LM Studio load candidate keys
+- name: Prefer matched LM Studio load paths over keys
+  set_fact:
+    lmstudio_matched_paths: >-
+      {{
+        (
+          lmstudio_matched_keys | default([])
+          | select('in', lms_disk_model_paths | default([]))
+          | list
+        )
+        + (
+          lmstudio_matched_keys | default([])
+          | reject('in', lms_disk_model_paths | default([]))
+          | list
+        )
+      }}
+
+- name: Resolve LM Studio load candidate paths/keys
   set_fact:
     lmstudio_load_candidates: >-
       {{
         (
-          (lmstudio_matched_keys | default([]))
+          (lmstudio_matched_paths | default([]))
           + (
-            [lmstudio_log_load_key]
-            if (
-              (lmstudio_log_load_key | default('') | trim | length > 0)
-              and (lmstudio_log_confirms_download | default(false) | bool)
-            )
+            [lmstudio_log_load_key, lmstudio_log_disk_hint]
+            if (lmstudio_log_confirms_download | default(false) | bool)
             else []
           )
           + [lmstudio_model_slug_no_quant, lmstudio_model_slug, lmstudio_model_base_id]
@@ -114,18 +162,36 @@
       }}
     lmstudio_disk_model_key: >-
       {{
-        lmstudio_matched_keys | first
-        if (lmstudio_matched_keys | default([]) | length > 0)
+        lmstudio_matched_paths | first
+        if (lmstudio_matched_paths | default([]) | length > 0)
         else (
-          lmstudio_log_load_key
-          if (
-            (lmstudio_log_load_key | default('') | trim | length > 0)
-            and (lmstudio_log_confirms_download | default(false) | bool)
-          )
+          lmstudio_matched_keys | first
+          if (lmstudio_matched_keys | default([]) | length > 0)
           else (
-            lmstudio_model_slug_no_quant
-            if (lmstudio_model_slug_no_quant | default('') | trim | length > 0)
-            else lmstudio_model_base_id
+            lms_disk_model_paths | first
+            if (
+              (lmstudio_log_confirms_download | default(false) | bool)
+              and (lms_disk_model_paths | default([]) | length > 0)
+            )
+            else (
+              lmstudio_log_load_key
+              if (
+                (lmstudio_log_load_key | default('') | trim | length > 0)
+                and (lmstudio_log_confirms_download | default(false) | bool)
+              )
+              else (
+                lmstudio_log_disk_hint
+                if (
+                  (lmstudio_log_disk_hint | default('') | trim | length > 0)
+                  and (lmstudio_log_confirms_download | default(false) | bool)
+                )
+                else (
+                  lmstudio_model_slug_no_quant
+                  if (lmstudio_model_slug_no_quant | default('') | trim | length > 0)
+                  else lmstudio_model_base_id
+                )
+              )
+            )
           )
         )
       }}
@@ -135,6 +201,6 @@
         or (lmstudio_log_confirms_download | default(false) | bool)
       }}
 
-- name: Set LM Studio runtime model from resolved disk key
+- name: Set LM Studio runtime model from resolved disk path/key
   set_fact:
     lmstudio_runtime_model: "{{ lmstudio_disk_model_key }}"

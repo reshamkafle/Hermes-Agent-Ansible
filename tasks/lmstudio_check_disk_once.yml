@@ -1,7 +1,7 @@
 ---
 # One disk-check cycle: list models (with flag fallbacks) then parse/match.
 # Requires: lmstudio_lms_cmd, lmstudio_cli_env, lmstudio_model_base_id, lmstudio_match_needles
-# Sets: lms_ls_raw, lms_disk_model_keys, lmstudio_disk_model_key, lmstudio_load_candidates,
+# Sets: lms_ls_raw, lms_disk_model_paths, lms_disk_model_keys, lmstudio_disk_model_key, lmstudio_load_candidates,
 #       lmstudio_model_on_disk
 
 - name: List LM Studio models on disk (single check cycle)
