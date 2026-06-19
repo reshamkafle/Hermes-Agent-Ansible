@@ -65,6 +65,17 @@ else
 fi
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
+  LAUNCHD_LABEL="com.hermes.gateway"
+  LAUNCHD_LOADED=false
+  LAUNCHD_DOMAIN=""
+  for DOMAIN in "gui/$(id -u)" "user/$(id -u)"; do
+    if launchctl print "${DOMAIN}/${LAUNCHD_LABEL}" >/dev/null 2>&1; then
+      LAUNCHD_LOADED=true
+      LAUNCHD_DOMAIN="${DOMAIN}"
+      break
+    fi
+  done
+
   if launchctl print "gui/$(id -u)" >/dev/null 2>&1; then
     echo "macOS GUI session (Aqua): OK — LaunchAgent can load in this session."
   else
@@ -83,20 +94,28 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 
   echo
   echo "LaunchAgent status:"
-  if launchctl print "gui/$(id -u)/com.hermes.gateway" 2>&1; then
-    :
+  if [[ "$LAUNCHD_LOADED" == "true" ]]; then
+    launchctl print "${LAUNCHD_DOMAIN}/${LAUNCHD_LABEL}" 2>&1
   else
-    echo "(LaunchAgent com.hermes.gateway is not loaded)"
+    echo "Bad request."
+    echo "Could not find service \"${LAUNCHD_LABEL}\" in domain for user gui: $(id -u)"
+    echo "(LaunchAgent ${LAUNCHD_LABEL} is not loaded)"
+    echo "  Fix: from Hermes-Agent-Ansible run \`./start_gateway.sh\` to redeploy the plist and bootstrap launchd."
     note_issue
   fi
 
   echo
   echo "Recent gateway stderr (last 25 lines):"
   GATEWAY_STDERR="${TARGET_HOME}/.hermes/logs/gateway.stderr.log"
+  GATEWAY_STDOUT="${TARGET_HOME}/.hermes/logs/gateway.stdout.log"
   if [[ -f "$GATEWAY_STDERR" ]]; then
     tail -n 25 "$GATEWAY_STDERR"
+  elif [[ -f "$GATEWAY_STDOUT" ]]; then
+    echo "(stderr log missing; showing gateway.stdout.log instead)"
+    tail -n 25 "$GATEWAY_STDOUT"
   else
     echo "(missing: ${GATEWAY_STDERR})"
+    echo "  Hint: launchd creates these files on first start — run ./start_gateway.sh to bootstrap the LaunchAgent."
   fi
 else
   if command -v systemctl >/dev/null 2>&1; then

@@ -40,24 +40,16 @@
   tags:
     - hermes_agents
 
+- name: Ensure macOS LaunchAgent helper script is executable
+  file:
+    path: "{{ playbook_dir }}/scripts/macos_launchd_gateway.sh"
+    mode: '0755'
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags:
+    - hermes_agents
+
 - name: Stop existing Hermes gateway LaunchAgent (macOS)
-  shell: |
-    set -euo pipefail
-    DOMAIN="gui/$(id -u)"
-    LABEL="com.hermes.gateway"
-    PLIST="{{ target_home }}/Library/LaunchAgents/com.hermes.gateway.plist"
-    TARGET="${DOMAIN}/${LABEL}"
-
-    launchctl bootout "${TARGET}" 2>/dev/null || \
-    launchctl bootout "${DOMAIN}" "${PLIST}" 2>/dev/null || \
-    launchctl unload -w "${PLIST}" 2>/dev/null || true
-
-    for _ in $(seq 1 15); do
-      pgrep -f "[h]ermes.*gateway run" >/dev/null || break
-      sleep 1
-    done
-    pkill -f "[h]ermes.*gateway run" 2>/dev/null || true
-    sleep 1
+  shell: "{{ playbook_dir }}/scripts/macos_launchd_gateway.sh stop {{ target_home | quote }}"
   args:
     executable: /bin/bash
   environment:
@@ -70,23 +62,7 @@
     - hermes_agents
 
 - name: Start Hermes gateway via LaunchAgent (macOS)
-  shell: |
-    set -euo pipefail
-    DOMAIN="gui/$(id -u)"
-    LABEL="com.hermes.gateway"
-    PLIST="{{ target_home }}/Library/LaunchAgents/com.hermes.gateway.plist"
-    TARGET="${DOMAIN}/${LABEL}"
-
-    if launchctl bootstrap "${DOMAIN}" "${PLIST}" 2>/dev/null; then
-      exit 0
-    fi
-
-    if launchctl print "${TARGET}" >/dev/null 2>&1; then
-      launchctl kickstart -k "${TARGET}"
-      exit 0
-    fi
-
-    launchctl load -w "${PLIST}"
+  shell: "{{ playbook_dir }}/scripts/macos_launchd_gateway.sh start {{ target_home | quote }}"
   args:
     executable: /bin/bash
   environment:
@@ -100,29 +76,45 @@
 
 - name: Verify Hermes gateway is healthy
   block:
-    - name: Verify Hermes gateway LaunchAgent is loaded (macOS)
-      shell: launchctl print "gui/$(id -u)/com.hermes.gateway" >/dev/null 2>&1
-      args:
-        executable: /bin/bash
-      environment:
-        HOME: "{{ target_home }}"
-      register: gateway_verify
-      changed_when: false
-      retries: 5
-      delay: 2
-      until: gateway_verify.rc == 0
-      when: ansible_facts['os_family'] == 'Darwin'
-
     - name: Verify Hermes gateway process is running (macOS)
       shell: pgrep -f "[h]ermes.*gateway run" >/dev/null 2>&1
       args:
         executable: /bin/bash
       register: gateway_process_verify
       changed_when: false
-      retries: 5
-      delay: 2
+      retries: 8
+      delay: 3
       until: gateway_process_verify.rc == 0
       when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Verify Hermes gateway LaunchAgent is loaded (macOS, advisory)
+      shell: |
+        LABEL="com.hermes.gateway"
+        for DOMAIN in "gui/$(id -u)" "user/$(id -u)"; do
+          if launchctl print "${DOMAIN}/${LABEL}" >/dev/null 2>&1; then
+            exit 0
+          fi
+        done
+        exit 1
+      args:
+        executable: /bin/bash
+      environment:
+        HOME: "{{ target_home }}"
+      register: gateway_verify
+      changed_when: false
+      failed_when: false
+      when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Note detached gateway fallback (macOS)
+      debug:
+        msg: >-
+          Gateway process is running but LaunchAgent is not loaded — likely started
+          via detached fallback (launchd unavailable on this macOS version).
+          It will not auto-restart on crash until ./start_gateway.sh is run again.
+      when:
+        - ansible_facts['os_family'] == 'Darwin'
+        - gateway_process_verify.rc | default(1) == 0
+        - gateway_verify.rc | default(1) != 0
 
     - name: Verify Hermes gateway systemd service is active (Linux)
       command: systemctl is-active hermes-workspace

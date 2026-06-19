@@ -107,7 +107,14 @@
       when: ansible_facts['os_family'] == 'Darwin'
 
     - name: Check Hermes gateway LaunchAgent is loaded (macOS)
-      shell: launchctl print "gui/$(id -u)/com.hermes.gateway" >/dev/null 2>&1
+      shell: |
+        LABEL="com.hermes.gateway"
+        for DOMAIN in "gui/$(id -u)" "user/$(id -u)"; do
+          if launchctl print "${DOMAIN}/${LABEL}" >/dev/null 2>&1; then
+            exit 0
+          fi
+        done
+        exit 1
       args:
         executable: /bin/bash
       environment:

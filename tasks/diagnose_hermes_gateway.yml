@@ -38,7 +38,18 @@
     - hermes_agents
 
 - name: Read LaunchAgent status (macOS)
-  shell: launchctl print "gui/$(id -u)/com.hermes.gateway" 2>&1 || echo "(LaunchAgent com.hermes.gateway is not loaded)"
+  shell: |
+    LABEL="com.hermes.gateway"
+    for DOMAIN in "gui/$(id -u)" "user/$(id -u)"; do
+      if launchctl print "${DOMAIN}/${LABEL}" >/dev/null 2>&1; then
+        launchctl print "${DOMAIN}/${LABEL}" 2>&1
+        exit 0
+      fi
+    done
+    echo "Bad request."
+    echo "Could not find service \"${LABEL}\" in domain for user gui: $(id -u)"
+    echo "(LaunchAgent ${LABEL} is not loaded)"
+    echo "  Fix: run ./start_gateway.sh to redeploy the plist and bootstrap launchd."
   args:
     executable: /bin/bash
   environment:
@@ -52,11 +63,16 @@
 
 - name: Read recent gateway stderr log (macOS)
   shell: |
-    LOG="{{ target_home }}/.hermes/logs/gateway.stderr.log"
-    if [[ -f "$LOG" ]]; then
-      tail -n 25 "$LOG"
+    STDERR="{{ target_home }}/.hermes/logs/gateway.stderr.log"
+    STDOUT="{{ target_home }}/.hermes/logs/gateway.stdout.log"
+    if [[ -f "$STDERR" ]]; then
+      tail -n 25 "$STDERR"
+    elif [[ -f "$STDOUT" ]]; then
+      echo "(stderr log missing; showing gateway.stdout.log instead)"
+      tail -n 25 "$STDOUT"
     else
-      echo "(missing: $LOG)"
+      echo "(missing: $STDERR)"
+      echo "  Hint: launchd creates these files on first start — run ./start_gateway.sh."
     fi
   args:
     executable: /bin/bash

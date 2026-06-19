@@ -193,7 +193,7 @@
           Environment=HOME={{ hermes_home }}
           Environment=PATH={{ lmstudio_home }}/bin:{{ hermes_home }}/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
           WorkingDirectory={{ hermes_home }}/.hermes
-          ExecStart={{ target_home }}/.hermes/bin/hermes-run.sh gateway run
+          ExecStart={{ target_home }}/.hermes/bin/hermes-run.sh gateway run --replace
           Restart=always
 
           [Install]

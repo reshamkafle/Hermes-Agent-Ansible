@@ -37,7 +37,12 @@ chmod +x test_hermes_daily_digest.sh && ./test_hermes_daily_digest.sh
 
 The gateway starts automatically after deploy (controlled by `hermes_start_agents` in `vars.yml`, default `true`).
 
-On macOS, check the gateway: `launchctl print gui/$(id -u)/com.hermes.gateway`
+On macOS, check the gateway process and LaunchAgent:
+
+```bash
+pgrep -fl "hermes.*gateway run"
+launchctl print "gui/$(id -u)/com.hermes.gateway"   # or user/$(id -u) on some macOS versions
+```
 
 To skip the gateway during deploy: set `hermes_start_agents: false` in `vars.yml`, or `START_HERMES_AGENTS=0 ./deploy_local.sh`
 
@@ -46,16 +51,27 @@ To skip the gateway during deploy: set `hermes_start_agents: false` in `vars.yml
 If you already deployed and only need the gateway (or it stopped and you want to restart it):
 
 ```bash
-chmod +x start_gateway.sh scripts/diagnose_gateway.sh && ./start_gateway.sh
+chmod +x start_gateway.sh scripts/diagnose_gateway.sh scripts/macos_launchd_gateway.sh
+./start_gateway.sh
 ```
 
-`start_gateway.sh` runs Ansible to restart the gateway, then prints a **diagnostics report** automatically. You may also get a Telegram message *"Gateway shutting down — Your current task will be interrupted"* during the restart — that is expected (the old process stops before the new one starts).
+`start_gateway.sh` runs Ansible to redeploy the LaunchAgent plist (macOS), restart the gateway, and print a **diagnostics report** automatically. You may also get a Telegram message *"Gateway shutting down — Your current task will be interrupted"* during the restart — that is expected (the old process stops before the new one starts).
+
+On macOS, `tasks/start_hermes_gateway.yml` calls `scripts/macos_launchd_gateway.sh`, which:
+
+1. Resolves the correct launchd domain (`gui/<uid>` or `user/<uid>`)
+2. Bootstraps the plist and kickstarts `com.hermes.gateway`
+3. Retries when launchd reports the job is unloaded
+4. Falls back to a detached `nohup hermes gateway run --replace` if launchd cannot manage the domain (seen on some macOS 26+ hosts)
+
+Health is verified by **gateway process running** (`pgrep`), not only by LaunchAgent loaded state — so a detached fallback still counts as success.
 
 Then check it:
 
 ```bash
-# macOS — LaunchAgent (auto-restarts on failure)
-launchctl print gui/$(id -u)/com.hermes.gateway
+# macOS — process + LaunchAgent (auto-restarts on failure when launchd supervises)
+pgrep -fl "hermes.*gateway run"
+launchctl print "gui/$(id -u)/com.hermes.gateway" 2>/dev/null || launchctl print "user/$(id -u)/com.hermes.gateway"
 tail -f ~/.hermes/logs/gateway.stderr.log
 
 # Linux / WSL2 — check the systemd service
@@ -98,7 +114,8 @@ Recent gateway stderr (last 25 lines):
 | LM Studio reachable at `lmstudio_base_url` | yes | yes |
 | Gateway process / service running | `pgrep` for `hermes gateway run` | `systemctl is-active hermes-workspace` |
 | GUI session (Aqua) for LaunchAgent | yes | — |
-| Recent logs | `~/.hermes/logs/gateway.stderr.log` | `journalctl -u hermes-workspace` |
+| LaunchAgent loaded | `com.hermes.gateway` in `gui/<uid>` or `user/<uid>` | — |
+| Recent logs | `~/.hermes/logs/gateway.stderr.log` (falls back to `gateway.stdout.log`) | `journalctl -u hermes-workspace` |
 
 Exit code `0` = healthy; `1` = at least one check failed (with fix hints in the output).
 
@@ -109,8 +126,11 @@ For the same checks plus verification that your configured LM Studio model is li
 **Common causes when diagnostics fail**
 
 - **LM Studio not running** — config points at `lmstudio_base_url` (default `http://127.0.0.1:1234/v1`). Run `lms daemon up`, `lms server start`, then `lms get <model>`.
+- **LaunchAgent not loaded** — run `./start_gateway.sh` to redeploy the plist and bootstrap launchd. An outdated plist (missing `LimitLoadToSessionType`, no `--replace`) is replaced on each start.
 - **Gateway crash on startup** — read the stderr tail in the report or `~/.hermes/logs/gateway.stderr.log`.
-- **Not logged into the Mac GUI** — `com.hermes.gateway` uses `LimitLoadToSessionType Aqua`; SSH-only sessions cannot load the LaunchAgent.
+- **Missing stderr log** — launchd creates log files on first start; if the agent never loaded, run `./start_gateway.sh` first, then re-run diagnostics.
+- **Not logged into the Mac GUI** — `com.hermes.gateway` prefers an Aqua session; SSH-only hosts may use the detached fallback instead of LaunchAgent supervision.
+- **Process running but LaunchAgent not loaded** — detached fallback is active (launchd unavailable). Gateway works until reboot/crash; re-run `./start_gateway.sh` to retry LaunchAgent supervision.
 
 
 ## Playbooks
@@ -144,9 +164,10 @@ Run `deploy_hermes.yml` first — skill playbooks expect `~/.hermes/` to exist.
 | LLM model | GGUF via `lmstudio_model_linux` | MLX via `lmstudio_model` |
 | LLM service | systemd (`llmster`) | `lms daemon up` + `lms server start` |
 | Scheduler | cron | LaunchAgents in `~/Library/LaunchAgents/` |
-| Gateway | systemd (`hermes-workspace`) | LaunchAgent (`com.hermes.gateway`) |
+| Gateway | systemd (`hermes-workspace`) | LaunchAgent (`com.hermes.gateway`) via `scripts/macos_launchd_gateway.sh` |
+| Gateway command | `hermes-run.sh gateway run --replace` | same |
 
-Playbooks auto-find the Hermes CLI (`~/.local/bin/hermes`, Homebrew paths, or PATH). Only `deploy_hermes.yml` installs Hermes if missing.
+The macOS LaunchAgent plist sets `HERMES_HOME`, runs `gateway run --replace` (avoids stale PID conflicts), and loads in Aqua or Background sessions. Playbooks auto-find the Hermes CLI (`~/.local/bin/hermes`, Homebrew paths, or PATH). Only `deploy_hermes.yml` installs Hermes if missing.
 
 ## Scheduled jobs
 
@@ -156,7 +177,7 @@ Playbooks auto-find the Hermes CLI (`~/.local/bin/hermes`, Homebrew paths, or PA
 | Tech news | 5 AM | `com.hermes.technews.plist` |
 | Daily digest | 6 AM | `com.hermes.dailydigest.plist` |
 
-Logs: `~/.hermes/logs/` · macOS gateway: `launchctl print gui/$(id -u)/com.hermes.gateway` · Linux gateway: `systemctl status hermes-workspace`
+Logs: `~/.hermes/logs/` · macOS gateway: `pgrep -fl "hermes.*gateway run"` and `launchctl print gui/$(id -u)/com.hermes.gateway` (or `user/$(id -u)`) · Linux gateway: `systemctl status hermes-workspace`
 
 ## Smoke tests
 
@@ -202,7 +223,7 @@ lms load <model-from-vars.yml>
 | LM Studio API at `lmstudio_base_url` | yes | yes |
 | Model from `vars.yml` in `/v1/models` | yes | yes |
 | Gateway process / service running | `pgrep` for `hermes gateway run` | `systemctl is-active hermes-workspace` |
-| LaunchAgent loaded | `com.hermes.gateway` | — |
+| LaunchAgent loaded | `com.hermes.gateway` in `gui/<uid>` or `user/<uid>` | — |
 | GUI session (Aqua) for LaunchAgent | yes | — |
 
 Exit code `0` = all checks passed; `1` = at least one failed. On failure, the playbook prints the full gateway diagnostic report and writes `~/.hermes/logs/gateway-diagnostics.txt`.
@@ -212,7 +233,7 @@ Exit code `0` = all checks passed; `1` = at least one failed. On failure, the pl
 - **LM Studio not reachable** — start the server and load the model (commands above). Confirm with `curl http://127.0.0.1:1234/v1/models` (or your `lmstudio_base_url`).
 - **Model not listed** — run `lms get` and `lms load` for the model in `vars.yml`.
 - **Gateway not running** — run `./start_gateway.sh` or `bash scripts/diagnose_gateway.sh vars.yml`.
-- **macOS LaunchAgent missing** — log in to the Mac desktop (not SSH-only); `com.hermes.gateway` requires an Aqua GUI session.
+- **macOS LaunchAgent missing** — run `./start_gateway.sh` to redeploy and bootstrap. If the process is running but LaunchAgent is not loaded, the detached fallback may be in use (see [Start gateway only](#start-gateway-only)).
 
 ### Daily digest
 
@@ -268,7 +289,10 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 
 | Problem | Fix |
 |---------|-----|
-| Gateway not running (macOS) | Run `bash scripts/diagnose_gateway.sh vars.yml` · ensure `~/.hermes/logs/` exists · check `launchctl print gui/$(id -u)/com.hermes.gateway` · logs: `~/.hermes/logs/gateway.stderr.log` · restart: `./start_gateway.sh` |
+| Gateway not running (macOS) | Run `bash scripts/diagnose_gateway.sh vars.yml` · restart: `./start_gateway.sh` · check process: `pgrep -fl "hermes.*gateway run"` · LaunchAgent: `launchctl print gui/$(id -u)/com.hermes.gateway` or `user/$(id -u)/com.hermes.gateway` · logs: `~/.hermes/logs/gateway.stderr.log` |
+| LaunchAgent not loaded (macOS) | Run `./start_gateway.sh` (redeploys plist + bootstrap). Manual: `scripts/macos_launchd_gateway.sh start ~` |
+| Gateway process up, LaunchAgent down | Detached fallback — gateway works but won't auto-restart. Re-run `./start_gateway.sh` or accept manual restarts |
+| `gateway.stderr.log` missing | LaunchAgent never started the job. Run `./start_gateway.sh`, then check logs again |
 | Hermes CLI not found | Run `deploy_hermes.yml` first; check `~/.local/bin/hermes` |
 | Skill playbook fails | Core deploy must run first — use `deploy_local.sh` / `deploy_all.sh` |
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
@@ -293,6 +317,6 @@ deploy_hermes.yml          deploy_investment.yml    deploy_news.yml    deploy_di
 deploy_local.sh            deploy_all.sh            start_gateway.sh   start_gateway.yml
 test_telegram.sh           test_lmstudio_gateway.sh test_hermes_daily_digest.sh
 smoke_test_telegram.yml    smoke_test_lmstudio_gateway.yml smoke_test_hermes_daily_digest.yml
-scripts/diagnose_gateway.sh    scripts/read_hermes_start_agents.sh
+scripts/diagnose_gateway.sh    scripts/macos_launchd_gateway.sh    scripts/read_hermes_start_agents.sh
 tasks/resolve_hermes_cmd.yml    tasks/sync_hermes_config.yml    tasks/start_hermes_gateway.yml    tasks/diagnose_hermes_gateway.yml    tasks/bootstrap_lmstudio.yml    tasks/lmstudio_cli_environment.yml    tasks/parse_lmstudio_disk_listing.yml    tasks/ensure_lmstudio_server.yml    tasks/ensure_lmstudio_model.yml    tasks/ensure_lmstudio_load.yml    tasks/verify_lmstudio_model_on_disk.yml    tasks/read_lmstudio_get_log_tail.yml    templates/*.j2    vars.yml (from vars.example..yml)
 ```

@@ -9,18 +9,24 @@
         <string>{{ target_home }}/.hermes/bin/hermes-run.sh</string>
         <string>gateway</string>
         <string>run</string>
+        <string>--replace</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
         <string>{{ target_home }}</string>
+        <key>HERMES_HOME</key>
+        <string>{{ target_home }}/.hermes</string>
         <key>PATH</key>
         <string>{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] | default('/usr/bin:/bin') }}</string>
     </dict>
     <key>WorkingDirectory</key>
     <string>{{ target_home }}/.hermes</string>
     <key>LimitLoadToSessionType</key>
-    <string>Aqua</string>
+    <array>
+        <string>Aqua</string>
+        <string>Background</string>
+    </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
