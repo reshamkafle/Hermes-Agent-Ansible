@@ -1,0 +1,12 @@
+---
+# One disk poll cycle: check disk once, then pause if model not found and retries remain.
+
+- name: Check LM Studio model on disk (poll cycle)
+  include_tasks: lmstudio_check_disk_once.yml
+
+- name: Wait before next LM Studio disk poll
+  pause:
+    seconds: "{{ lmstudio_wait_delay | default(10) }}"
+  when:
+    - not (lmstudio_model_on_disk | default(false) | bool)
+    - (lmstudio_disk_poll_attempt | default(1) | int) < (lmstudio_wait_retries | default(36) | int)
