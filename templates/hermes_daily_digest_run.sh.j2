@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Run daily-morning-digest, then deliver HTML to Telegram via hermes send.
+# chat -Q does not auto-deliver; MEDIA: tags only work with hermes cron delivery.
+set -euo pipefail
+export HOME="{{ target_home }}"
+export HERMES_HOME="{{ target_home }}/.hermes"
+export PATH="{{ hermes_path_prefix }}:${PATH:-/usr/bin:/bin}"
+if [[ -f "${HERMES_HOME}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${HERMES_HOME}/.env"
+  set +a
+fi
+
+HERMES_BIN="{{ hermes_cmd }}"
+DIGEST_HTML="${HERMES_HOME}/workspace/digest/daily_digest.html"
+
+# Call hermes directly (hermes-run.sh uses exec and would skip delivery below).
+"${HERMES_BIN}" chat -Q -q 'Run the daily-morning-digest skill according to its instructions.' --skills daily-morning-digest --yolo
+
+if [[ ! -s "${DIGEST_HTML}" ]]; then
+  echo "error: digest HTML missing or empty at ${DIGEST_HTML}" >&2
+  exit 1
+fi
+
+declare -A _seen=()
+recipients=()
+_raw="${TELEGRAM_SEND_USERS:-${TELEGRAM_ALLOWED_USERS:-}}"
+IFS=',' read -ra _ids <<< "${_raw}"
+for rid in "${_ids[@]}"; do
+  rid="${rid// /}"
+  [[ -z "${rid}" ]] && continue
+  [[ -n "${_seen[${rid}]+x}" ]] && continue
+  _seen["${rid}"]=1
+  recipients+=("${rid}")
+done
+if [[ -n "${TELEGRAM_HOME_CHANNEL:-}" ]] && [[ -z "${_seen[${TELEGRAM_HOME_CHANNEL}]+x}" ]]; then
+  recipients+=("${TELEGRAM_HOME_CHANNEL}")
+fi
+
+if [[ ${#recipients[@]} -eq 0 ]]; then
+  echo "error: no Telegram recipients (set TELEGRAM_SEND_USERS or TELEGRAM_ALLOWED_USERS in ${HERMES_HOME}/.env)" >&2
+  exit 1
+fi
+
+for rid in "${recipients[@]}"; do
+  echo "==> Delivering digest to telegram:${rid}"
+  "${HERMES_BIN}" send --to "telegram:${rid}" \
+    --subject "Hermes Daily Briefing — full HTML report attached" \
+    --file "${DIGEST_HTML}" \
+    -q
+done
+
+echo "==> Digest delivered to ${#recipients[@]} Telegram recipient(s)"

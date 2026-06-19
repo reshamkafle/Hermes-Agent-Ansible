@@ -4,7 +4,8 @@
 # combined) and verify the Bootstrap HTML digest is produced. Hermes sends the
 # digest to Telegram recipients configured in vars.yml (TELEGRAM_SEND_USERS).
 #
-# Uses the same hermes chat command as the 6 AM LaunchAgent / cron job.
+# Uses the same hermes-daily-digest.sh wrapper as the 6 AM LaunchAgent / cron job
+# (runs the skill, then delivers HTML via hermes send — chat -Q alone does not).
 # Does not install Hermes or touch remote hosts.
 #
 # Prerequisites:
@@ -35,7 +36,7 @@ fi
 
 echo "==> Hermes daily digest smoke test (news + investment -> Telegram)"
 echo "==> Timeout: ${SMOKE_TEST_TIMEOUT}s (set SMOKE_TEST_TIMEOUT to override)"
-echo "==> This runs hermes chat with daily-morning-digest — it may take several minutes."
+echo "==> This runs hermes-daily-digest.sh (skill + Telegram delivery) — it may take several minutes."
 echo
 
 ansible-playbook smoke_test_hermes_daily_digest.yml \

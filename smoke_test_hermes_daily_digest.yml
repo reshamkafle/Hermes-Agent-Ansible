@@ -180,9 +180,15 @@
         state: directory
         mode: "0755"
 
-    - name: Run Hermes daily morning digest skill (same command as 6 AM scheduler)
+    - name: Deploy daily digest runner for smoke test (same script as 6 AM scheduler)
+      template:
+        src: "{{ playbook_dir }}/templates/hermes_daily_digest_run.sh.j2"
+        dest: "{{ hermes_home_dir }}/bin/hermes-daily-digest.sh"
+        mode: "0755"
+
+    - name: Run Hermes daily morning digest (skill + Telegram delivery via hermes send)
       shell: |
-        exec "{{ hermes_home_dir }}/bin/hermes-run.sh" chat -Q -q 'Run the daily-morning-digest skill according to its instructions.' --skills daily-morning-digest --yolo
+        exec "{{ hermes_home_dir }}/bin/hermes-daily-digest.sh"
       args:
         executable: /bin/bash
       environment:
@@ -197,9 +203,14 @@
       assert:
         that:
           - hermes_digest_run.rc == 0
+          - hermes_digest_run.stdout is search('Digest delivered to [1-9][0-9]* Telegram recipient')
         fail_msg: >-
           Hermes daily-morning-digest failed (rc={{ hermes_digest_run.rc }}).
+          stdout: {{ hermes_digest_run.stdout | default('') | trim }}.
           stderr: {{ hermes_digest_run.stderr | default('') | trim }}.
+          chat -Q does not deliver to Telegram — the runner must finish with
+          "Digest delivered to N Telegram recipient(s)". Re-run deploy_digest.yml
+          or ./deploy_local.sh to install ~/.hermes/bin/hermes-daily-digest.sh.
           If you see "Context length exceeded (N tokens)", check that
           {{ hermes_config_path }} and {{ hermes_env_path }} were synced
           (base_url={{ lmstudio_base_url }}, context_length={{ hermes_model_context_length | default(65536) }}) — not a stale Ollama
