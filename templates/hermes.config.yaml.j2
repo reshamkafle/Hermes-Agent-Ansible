@@ -3,6 +3,8 @@ model:
   provider: "{{ hermes_model_provider }}"
   base_url: "{{ lmstudio_base_url }}"
   api_key: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  # Hermes requires >=64K; LM Studio often defaults to 4096 unless overridden at load time.
+  context_length: {{ hermes_model_context_length | default(65536) | int }}
 gateway:
   enabled: true
   platform: "telegram"

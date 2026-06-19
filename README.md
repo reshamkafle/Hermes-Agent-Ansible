@@ -280,6 +280,7 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | `lmstudio_model_download_url` | Hugging Face repo for `lms get --gguf` (default in example: `https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF`) |
 | `hermes_model_provider` | Hermes provider for LM Studio (default `custom`) |
 | `hermes_model_api_key` | LM Studio API token when auth is on; use `lm-studio` when auth is off |
+| `hermes_model_context_length` | Context window for Hermes and `lms load --context-length` (default `65536`; Hermes minimum is `64000`) |
 | `tracked_stocks` | Tickers for investment skill |
 | `firecrawl_init_all` / `firecrawl_verify_install` | Firecrawl setup in `~/.hermes/workspace` |
 
@@ -303,7 +304,8 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | `lms: command not found` in your shell | Deploy installs `~/.hermes/bin/lms` on PATH for playbooks; for interactive use run `source ~/.hermes/bin/lmstudio-path.sh` (or `export PATH="$HOME/.hermes/bin:$HOME/.cache/lm-studio/bin:$PATH"`) |
 | `Failed to resolve artifact lmstudio-community/gemma-4-e2b-...` | LM Studio's artifact resolver mis-picked a staff model. Set `lmstudio_model_download_url` to the full Hugging Face repo (e.g. `https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF`). Re-run `./deploy_local.sh` |
 | Gemma 4 load fails | Update LM Studio to latest. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
-| Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for LM Studio. Check logs in `~/.hermes/logs/` |
+| Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom`, `model.base_url` for LM Studio, and `model.context_length` ≥ 64000. If the model was loaded with a 4K default context, run `lms unload` then `lms load <model> --context-length 65536 --yes`. Check logs in `~/.hermes/logs/` |
+| `context window ... below the minimum 64,000` | LM Studio loaded the model with a 4K default. Set `hermes_model_context_length: 65536` in `vars.yml`, re-run deploy or the smoke test (syncs `~/.hermes/config.yaml`), then reload: `lms unload && lms load <model> --context-length 65536 --yes` |
 | LM Studio / gateway smoke test fails | Run `./test_lmstudio_gateway.sh` — see [LM Studio and gateway](#lm-studio-and-gateway). Start LM Studio, load the model from `vars.yml`, then `./start_gateway.sh` if the gateway is down |
 | `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For LM Studio, `model.provider` must be `custom` with `base_url: http://127.0.0.1:1234/v1` and a non-empty `api_key` |
 | macOS job not firing | `launchctl list \| grep hermes` · reload plist after re-deploy |

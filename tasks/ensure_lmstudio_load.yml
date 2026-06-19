@@ -34,6 +34,7 @@
   debug:
     msg: >-
       lms load candidates (in order): {{ lmstudio_load_candidates | default([]) | join(' → ') }} |
+      context_length: {{ hermes_model_context_length | default(65536) }} |
       disk paths: {{ lms_disk_model_paths | default([]) | join(', ') }} |
       match needles: {{ lmstudio_match_needles | join(', ') }}
 
@@ -76,11 +77,12 @@
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
+    CTX="{{ hermes_model_context_length | default(65536) }}"
     load_one() {
       local key="$1"
-      echo "==> lms load $key --yes" >> "$LOG"
-      if "$LMS" load "$key" --yes >> "$LOG" 2>&1; then
-        echo "==> loaded: $key" >> "$LOG"
+      echo "==> lms load $key --context-length $CTX --yes" >> "$LOG"
+      if "$LMS" load "$key" --context-length "$CTX" --yes >> "$LOG" 2>&1; then
+        echo "==> loaded: $key (context_length=$CTX)" >> "$LOG"
         return 0
       fi
       echo "==> load failed for: $key" >> "$LOG"
@@ -110,11 +112,12 @@
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
+    CTX="{{ hermes_model_context_length | default(65536) }}"
     load_one() {
       local key="$1"
-      echo "==> lms load $key --yes" >> "$LOG"
-      if "$LMS" load "$key" --yes >> "$LOG" 2>&1; then
-        echo "==> loaded: $key" >> "$LOG"
+      echo "==> lms load $key --context-length $CTX --yes" >> "$LOG"
+      if "$LMS" load "$key" --context-length "$CTX" --yes >> "$LOG" 2>&1; then
+        echo "==> loaded: $key (context_length=$CTX)" >> "$LOG"
         return 0
       fi
       echo "==> load failed for: $key" >> "$LOG"

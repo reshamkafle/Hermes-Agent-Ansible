@@ -62,7 +62,7 @@
       vars.yml model: {{ lmstudio_effective_model }} |
       download: lms get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }} |
       load/config key: {{ lmstudio_runtime_model }} |
-      load: lms load {{ lmstudio_runtime_model }} --yes
+      load: lms load {{ lmstudio_runtime_model }} --context-length {{ hermes_model_context_length | default(65536) }} --yes
 
 - name: Warn when model download URL is not set (artifact resolver may mis-pick)
   debug:

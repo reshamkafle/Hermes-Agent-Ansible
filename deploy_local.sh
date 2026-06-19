@@ -104,7 +104,7 @@ for playbook in "${PLAYBOOKS[@]}"; do
       echo "  source \"${HOME}/.hermes/bin/lmstudio-path.sh\""
       echo "  lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF --gguf --yes"
       echo "If model load failed or hung, try:"
-      echo "  $LMS_CMD load google/gemma-4-12b@Q4_K_M --yes"
+      echo "  $LMS_CMD load google/gemma-4-12b@Q4_K_M --context-length 65536 --yes"
       echo "  $LMS_CMD ps"
       if [[ "$LMS_CMD" == "lms" ]]; then
         echo "If you see 'command not found', run:"

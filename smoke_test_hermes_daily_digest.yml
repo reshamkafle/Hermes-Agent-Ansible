@@ -145,8 +145,11 @@
           - hermes_digest_run.rc == 0
         fail_msg: >-
           Hermes daily-morning-digest failed (rc={{ hermes_digest_run.rc }}).
-          Ensure ~/.hermes/config.yaml defines model.provider/model.base_url for LM Studio
-          and the LM Studio server is running. Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
+          Ensure ~/.hermes/config.yaml defines model.provider/model.base_url for LM Studio,
+          model.context_length is at least 64000 (set hermes_model_context_length in vars.yml),
+          and the LM Studio server is running with the model loaded at that context size
+          (`lms unload` then `lms load <model> --context-length 65536 --yes` if needed).
+          Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
 
     - name: Verify combined digest HTML was generated
       stat:

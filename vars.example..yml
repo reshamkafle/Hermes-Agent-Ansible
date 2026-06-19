@@ -40,6 +40,8 @@ lmstudio_load_poll_interval: 30
 hermes_model_provider: "custom"
 # LM Studio API token when Require Authentication is on; use "lm-studio" when auth is off.
 hermes_model_api_key: "lm-studio"
+# Context window for Hermes and `lms load --context-length` (minimum 64000 for Hermes Agent).
+hermes_model_context_length: 65536
 hermes_start_agents: true
 
 # --- Firecrawl behavior ---
