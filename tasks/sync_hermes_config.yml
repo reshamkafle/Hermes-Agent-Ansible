@@ -1,11 +1,20 @@
 ---
 # Deploy Hermes config.yaml, .env secrets, and hermes-run.sh wrapper.
-# Requires: target_home, hermes_cmd, hermes_path_prefix, ansible_facts['os_family']
-# Optional: target_user (for Debian become)
+# Requires: target_home, hermes_path_prefix, ansible_facts['os_family']
+# Optional: target_user (for Debian become), hermes_cmd (for CLI config apply)
 # Sets (via resolve): lmstudio_effective_model, lmstudio_runtime_model
 
+- name: Pin target home to Ansible user directory (macOS local deploy)
+  set_fact:
+    target_home: "{{ ansible_user_dir }}"
+  when: ansible_facts['os_family'] == 'Darwin'
+
 - name: Stop Hermes gateway before rewriting config.yaml (macOS)
-  shell: "{{ playbook_dir }}/scripts/macos_launchd_gateway.sh stop {{ target_home | quote }}"
+  shell: |
+    set -euo pipefail
+    "{{ playbook_dir }}/scripts/macos_launchd_gateway.sh" stop {{ target_home | quote }}
+    pkill -f "[h]ermes.*gateway run" 2>/dev/null || true
+    sleep 1
   args:
     executable: /bin/bash
   environment:
@@ -25,11 +34,42 @@
 - name: Resolve LM Studio model identifiers for Hermes config
   import_tasks: resolve_lmstudio_model.yml
 
-- name: Deploy structured Hermes unified config.yaml
-  template:
-    src: "{{ playbook_dir }}/templates/hermes.config.yaml.j2"
+- name: Ensure Hermes home directory exists before config write
+  file:
+    path: "{{ target_home }}/.hermes"
+    state: directory
+    mode: "0755"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Render Hermes config.yaml from vars.yml
+  set_fact:
+    hermes_config_rendered: "{{ lookup('template', playbook_dir + '/templates/hermes.config.yaml.j2') }}"
+
+- name: Write Hermes config.yaml (force overwrite)
+  copy:
+    content: "{{ hermes_config_rendered }}"
     dest: "{{ target_home }}/.hermes/config.yaml"
     mode: "0644"
+    force: true
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Apply Hermes model routing via CLI (persists context_length in native schema)
+  shell: |
+    set -euo pipefail
+    H="{{ hermes_cmd }}"
+    "$H" config set model.default "{{ lmstudio_effective_model }}"
+    "$H" config set model.provider "{{ hermes_model_provider | default('custom') }}"
+    "$H" config set model.base_url "{{ lmstudio_base_url }}"
+    "$H" config set model.api_key "{{ hermes_model_api_key | default('lm-studio', true) }}"
+    "$H" config set model.context_length "{{ hermes_model_context_length | default(65536) }}"
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: "{{ target_home }}"
+    PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
+  when: hermes_cmd | default('') | trim | length > 0
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
@@ -41,28 +81,25 @@
 - name: Require Hermes config.yaml synced with LM Studio context_length
   vars:
     hermes_config_verify_text: "{{ hermes_config_verify_slurp.content | b64decode }}"
-    hermes_config_verify_ctx: >-
-      {{
-        hermes_config_verify_text
-        | regex_findall('context_length:\\s*(\\d+)')
-        | map('int')
-        | list
-      }}
+    hermes_config_parsed: "{{ hermes_config_verify_text | from_yaml }}"
+    hermes_model_section: "{{ hermes_config_parsed.model | default({}) }}"
+    hermes_model_ctx: "{{ hermes_model_section.context_length | default(0) | int }}"
     hermes_expected_ctx: "{{ hermes_model_context_length | default(65536) | int }}"
+    hermes_expected_model: "{{ lmstudio_effective_model }}"
+    hermes_expected_base_url: "{{ lmstudio_base_url }}"
   assert:
     that:
-      - lmstudio_base_url in hermes_config_verify_text
-      - (lmstudio_runtime_model | default(lmstudio_effective_model)) in hermes_config_verify_text
-      - hermes_config_verify_ctx | length > 0
-      - (hermes_config_verify_ctx | min) >= 64000
-      - hermes_expected_ctx in hermes_config_verify_ctx
+      - hermes_model_section.base_url | default('') == hermes_expected_base_url
+      - hermes_model_section.default | default('') == hermes_expected_model
+      - hermes_model_ctx >= 64000
+      - hermes_model_ctx == hermes_expected_ctx
     fail_msg: >-
       {{ target_home }}/.hermes/config.yaml was not synced from vars.yml.
-      Expected LM Studio at {{ lmstudio_base_url }} with model
-      {{ lmstudio_runtime_model | default(lmstudio_effective_model) }} and
-      context_length={{ hermes_expected_ctx }} (hermes_model_context_length in vars.yml).
-      Found context_length values: {{ hermes_config_verify_ctx | default([]) }}.
-      A running Hermes gateway can revert config.yaml — sync stops the gateway first;
+      Expected LM Studio at {{ hermes_expected_base_url }} with model
+      {{ hermes_expected_model }} and context_length={{ hermes_expected_ctx }}
+      (hermes_model_context_length in vars.yml).
+      Parsed model section: {{ hermes_model_section | to_nice_json }}.
+      A running Hermes gateway can revert config.yaml — sync stops it first;
       re-run ./deploy_local.sh or this smoke test.
 
 - name: Inject application keys into operational environment secrets (.env)

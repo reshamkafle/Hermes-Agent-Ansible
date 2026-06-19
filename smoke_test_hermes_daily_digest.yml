@@ -24,7 +24,7 @@
 
     - name: Establish workspace path variables
       set_fact:
-        target_home: "{{ ansible_facts['env']['HOME'] | default(lookup('env', 'HOME')) }}"
+        target_home: "{{ ansible_facts['env']['HOME'] | default(ansible_user_dir) }}"
         target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
 
     - name: Resolve LM Studio model from vars.yml
@@ -114,25 +114,21 @@
     - name: Require Hermes config synced to LM Studio (not stale Ollama/manual config)
       vars:
         hermes_config_text: "{{ hermes_config_slurp.content | b64decode }}"
-        hermes_config_ctx_values: >-
-          {{
-            hermes_config_text
-            | regex_findall('context_length:\\s*(\\d+)')
-            | map('int')
-            | list
-          }}
+        hermes_config_parsed: "{{ hermes_config_text | from_yaml }}"
+        hermes_model_section: "{{ hermes_config_parsed.model | default({}) }}"
+        hermes_model_ctx: "{{ hermes_model_section.context_length | default(0) | int }}"
       assert:
         that:
-          - lmstudio_base_url in hermes_config_text
-          - lmstudio_runtime_model | default(lmstudio_effective_model) in hermes_config_text
-          - hermes_config_ctx_values | length > 0
-          - (hermes_config_ctx_values | min) >= 64000
+          - hermes_model_section.base_url | default('') == lmstudio_base_url
+          - hermes_model_section.default | default('') == lmstudio_effective_model
+          - hermes_model_ctx >= 64000
+          - hermes_model_ctx == (hermes_model_context_length | default(65536) | int)
         fail_msg: >-
           {{ target_home }}/.hermes/config.yaml was not synced from vars.yml.
           Hermes must use LM Studio at {{ lmstudio_base_url }} with model
-          {{ lmstudio_runtime_model | default(lmstudio_effective_model) }} and
+          {{ lmstudio_effective_model }} and
           context_length >= 64000 (hermes_model_context_length in vars.yml).
-          Found context_length values: {{ hermes_config_ctx_values | default([]) }}.
+          Parsed model section: {{ hermes_model_section | to_nice_json }}.
           A running Hermes gateway can revert config.yaml — sync stops it first.
           LM Studio load context alone is not enough — re-run ./deploy_local.sh or this
           smoke test so sync_hermes_config.yml overwrites config.yaml.
@@ -181,7 +177,7 @@
           {{ target_home }}/.hermes/config.yaml was synced (base_url={{ lmstudio_base_url }},
           context_length={{ hermes_model_context_length | default(65536) }}) — not a stale Ollama
           config on port 11434. Re-run ./deploy_local.sh, then reload LM Studio:
-          `lms unload && lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}
+          `lms unload && lms load {{ lmstudio_effective_model }}
           --context-length {{ hermes_model_context_length | default(65536) }} --yes`.
           Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
 

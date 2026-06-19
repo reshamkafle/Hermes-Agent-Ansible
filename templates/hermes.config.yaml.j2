@@ -1,11 +1,10 @@
 {% set ctx = hermes_model_context_length | default(65536) | int %}
 model:
-  default: "{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
+  default: "{{ lmstudio_effective_model }}"
   provider: "{{ hermes_model_provider | default('custom') }}"
   base_url: "{{ lmstudio_base_url }}"
   api_key: "{{ hermes_model_api_key | default('lm-studio', true) }}"
   api_mode: chat_completions
-  # Hermes requires >=64K; LM Studio often defaults to 4096 unless overridden at load time.
   context_length: {{ ctx }}
 gateway:
   enabled: true

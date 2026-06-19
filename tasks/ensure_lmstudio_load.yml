@@ -72,6 +72,39 @@
       Candidates were: {{ lmstudio_load_candidates | default([]) | join(', ') }}
   when: lmstudio_model_already_loaded | default(false) | bool
 
+- name: Build ordered LM Studio load candidate list
+  set_fact:
+    lmstudio_load_attempts_raw: >-
+      {{
+        (
+          [lmstudio_effective_model]
+          + (lmstudio_load_candidates | default([]))
+          + [lmstudio_disk_model_key, lmstudio_model_base_id]
+        )
+        | map('string')
+        | map('trim')
+        | reject('equalto', '')
+        | unique
+        | list
+      }}
+
+- name: Drop MLX LM Studio candidates when vars.yml specifies GGUF
+  set_fact:
+    lmstudio_load_attempts: >-
+      {{
+        lmstudio_load_attempts_raw
+        | reject('search', '-mlx', ignorecase=true)
+        | list
+      }}
+  when:
+    - ('@' in (lmstudio_effective_model | default('')))
+      or ('--gguf' in (lmstudio_get_cli_flags | default('')))
+
+- name: Use full LM Studio load candidate list
+  set_fact:
+    lmstudio_load_attempts: "{{ lmstudio_load_attempts_raw }}"
+  when: lmstudio_load_attempts is not defined
+
 - name: Load LM Studio model into memory (macOS, try each candidate path/key)
   shell: |
     set -o pipefail
@@ -88,10 +121,7 @@
       echo "==> load failed for: $key" >> "$LOG"
       return 1
     }
-    {% for key in (
-      (lmstudio_load_candidates | default([]))
-      + [lmstudio_disk_model_key, lmstudio_model_base_id]
-    ) | map('string') | map('trim') | reject('equalto', '') | unique | list %}
+    {% for key in lmstudio_load_attempts | default([]) %}
     if load_one {{ key | quote }}; then exit 0; fi
     {% endfor %}
     echo "==> all load candidates failed" >> "$LOG"
@@ -123,10 +153,7 @@
       echo "==> load failed for: $key" >> "$LOG"
       return 1
     }
-    {% for key in (
-      (lmstudio_load_candidates | default([]))
-      + [lmstudio_disk_model_key, lmstudio_model_base_id]
-    ) | map('string') | map('trim') | reject('equalto', '') | unique | list %}
+    {% for key in lmstudio_load_attempts | default([]) %}
     if load_one {{ key | quote }}; then exit 0; fi
     {% endfor %}
     echo "==> all load candidates failed" >> "$LOG"

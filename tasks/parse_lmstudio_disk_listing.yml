@@ -4,7 +4,7 @@
 # Requires: lms_ls_raw (register result from lms ls), lmstudio_model_base_id
 # Sets: lms_ls_parsed_models, lms_ls_flat_models, lms_disk_model_paths, lms_disk_model_keys,
 #       lmstudio_model_slug, lmstudio_disk_model_key, lmstudio_load_candidates,
-#       lmstudio_model_on_disk, lmstudio_runtime_model
+#       lmstudio_model_on_disk
 
 - name: Parse LM Studio disk listing JSON
   set_fact:
@@ -200,7 +200,3 @@
         (lmstudio_matched_keys | default([]) | length > 0)
         or (lmstudio_log_confirms_download | default(false) | bool)
       }}
-
-- name: Set LM Studio runtime model from resolved disk path/key
-  set_fact:
-    lmstudio_runtime_model: "{{ lmstudio_disk_model_key }}"
