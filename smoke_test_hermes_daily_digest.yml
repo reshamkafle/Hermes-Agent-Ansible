@@ -106,6 +106,36 @@
           {{ target_home }}/.hermes/config.yaml is missing or empty. Run
           deploy_hermes.yml or ./deploy_local.sh to deploy the LM Studio provider config.
 
+    - name: Load deployed Hermes config.yaml for validation
+      slurp:
+        path: "{{ target_home }}/.hermes/config.yaml"
+      register: hermes_config_slurp
+
+    - name: Require Hermes config synced to LM Studio (not stale Ollama/manual config)
+      vars:
+        hermes_config_text: "{{ hermes_config_slurp.content | b64decode }}"
+        hermes_config_ctx_values: >-
+          {{
+            hermes_config_text
+            | regex_findall('context_length:\\s*(\\d+)')
+            | map('int')
+            | list
+          }}
+      assert:
+        that:
+          - lmstudio_base_url in hermes_config_text
+          - lmstudio_runtime_model | default(lmstudio_effective_model) in hermes_config_text
+          - hermes_config_ctx_values | length > 0
+          - (hermes_config_ctx_values | min) >= 64000
+        fail_msg: >-
+          {{ target_home }}/.hermes/config.yaml was not synced from vars.yml.
+          Hermes must use LM Studio at {{ lmstudio_base_url }} with model
+          {{ lmstudio_runtime_model | default(lmstudio_effective_model) }} and
+          context_length >= 64000 (hermes_model_context_length in vars.yml).
+          Found context_length values: {{ hermes_config_ctx_values | default([]) }}.
+          LM Studio load context alone is not enough — re-run ./deploy_local.sh or this
+          smoke test so sync_hermes_config.yml overwrites config.yaml.
+
     - name: Verify LM Studio endpoint is reachable
       uri:
         url: "{{ lmstudio_base_url | regex_replace('/?$', '') }}/models"
@@ -145,10 +175,13 @@
           - hermes_digest_run.rc == 0
         fail_msg: >-
           Hermes daily-morning-digest failed (rc={{ hermes_digest_run.rc }}).
-          Ensure ~/.hermes/config.yaml defines model.provider/model.base_url for LM Studio,
-          model.context_length and auxiliary.*.context_length are at least 64000 (set hermes_model_context_length in vars.yml),
-          and the LM Studio server is running with the model loaded at that context size
-          (`lms unload` then `lms load <model> --context-length 65536 --yes` if needed).
+          stderr: {{ hermes_digest_run.stderr | default('') | trim }}.
+          If you see "Context length exceeded (N tokens)", check that
+          {{ target_home }}/.hermes/config.yaml was synced (base_url={{ lmstudio_base_url }},
+          context_length={{ hermes_model_context_length | default(65536) }}) — not a stale Ollama
+          config on port 11434. Re-run ./deploy_local.sh, then reload LM Studio:
+          `lms unload && lms load {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}
+          --context-length {{ hermes_model_context_length | default(65536) }} --yes`.
           Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.
 
     - name: Verify combined digest HTML was generated
