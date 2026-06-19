@@ -268,8 +268,8 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | Variable | Purpose |
 |----------|---------|
 | `hermes_start_agents` | Start gateway after deploy (default `true`; set `false` or `START_HERMES_AGENTS=0` to skip) |
-| `lmstudio_model` | GGUF model for macOS — default `google/gemma-4-12b@Q4_K_M` (from `lmstudio-community/gemma-4-12B-it-GGUF`) |
-| `lmstudio_model_linux` | GGUF model for Linux/WSL2 — default `google/gemma-4-12b@Q4_K_M` |
+| `lmstudio_model` | GGUF model for macOS — default `google/gemma-4-12b@q4_k_m` (from `lmstudio-community/gemma-4-12B-it-GGUF`; use lowercase quant tag as shown by `lms ls`) |
+| `lmstudio_model_linux` | GGUF model for Linux/WSL2 — default `google/gemma-4-12b@q4_k_m` |
 | `lmstudio_base_url` | LM Studio OpenAI-compatible API URL (default `http://127.0.0.1:1234/v1`) |
 | `lmstudio_server_port` | Port for `lms server start` (default `1234`) |
 | `lmstudio_download_model` | Run `lms get --yes` during deploy (default `true`; skips if model already on disk) |
@@ -306,6 +306,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | Gemma 4 load fails | Update LM Studio to latest. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
 | Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom`, `model.base_url` for LM Studio, and `model.context_length` ≥ 64000. If the model was loaded with a 4K default context, run `lms unload` then `lms load <model> --context-length 65536 --yes`. Check logs in `~/.hermes/logs/` |
 | `Context length exceeded (N tokens). Cannot compress further.` with small N (~6K) | LM Studio context alone does not fix this — Hermes uses `~/.hermes/config.yaml`. If that file still points at Ollama (`11434`) or has no `context_length`, re-run `./deploy_local.sh` or the digest smoke test to sync from `vars.yml`. Set `hermes_model_context_length` to match `lms load --context-length`, then `lms unload && lms load <model> --context-length <same> --yes` |
+| `Model not found` on manual `lms load` | LM Studio model keys are case-sensitive. Your unload output shows the exact key (e.g. `google/gemma-4-12b@q4_k_m`, not `@Q4_K_M`). Run `lms ls` or `lms load` without `--yes` to pick interactively. `./deploy_local.sh` tries all disk paths/keys automatically |
 | `context window ... below the minimum 64,000` | LM Studio loaded the model with a 4K default. Set `hermes_model_context_length: 65536` in `vars.yml`, re-run deploy or the smoke test (syncs `~/.hermes/config.yaml` with `model.context_length` and `auxiliary.*.context_length`), then reload: `lms unload && lms load <model> --context-length 65536 --yes` |
 | LM Studio / gateway smoke test fails | Run `./test_lmstudio_gateway.sh` — see [LM Studio and gateway](#lm-studio-and-gateway). Start LM Studio, load the model from `vars.yml`, then `./start_gateway.sh` if the gateway is down |
 | `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For LM Studio, `model.provider` must be `custom` with `base_url: http://127.0.0.1:1234/v1` and a non-empty `api_key` |

@@ -8,8 +8,8 @@ hermes_home: "/home/hermes"
 # --- LM Studio (local LLM) ---
 # LM Studio staff pick google/gemma-4-12b (GGUF from lmstudio-community/gemma-4-12B-it-GGUF).
 # Used as Hermes model.default. Change only here; playbooks read vars.yml.
-lmstudio_model: "google/gemma-4-12b@Q4_K_M"
-lmstudio_model_linux: "google/gemma-4-12b@Q4_K_M"
+lmstudio_model: "google/gemma-4-12b@q4_k_m"
+lmstudio_model_linux: "google/gemma-4-12b@q4_k_m"
 # Explicit Hugging Face repo for `lms get --gguf` (avoids artifact mis-resolution).
 lmstudio_model_download_url: "https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF"
 # Download model during deploy (`lms get`). Set false if you already downloaded manually.
