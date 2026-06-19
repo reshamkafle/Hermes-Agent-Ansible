@@ -133,6 +133,7 @@
           {{ lmstudio_runtime_model | default(lmstudio_effective_model) }} and
           context_length >= 64000 (hermes_model_context_length in vars.yml).
           Found context_length values: {{ hermes_config_ctx_values | default([]) }}.
+          A running Hermes gateway can revert config.yaml — sync stops it first.
           LM Studio load context alone is not enough — re-run ./deploy_local.sh or this
           smoke test so sync_hermes_config.yml overwrites config.yaml.
 

@@ -1,55 +1,12 @@
 {% set ctx = hermes_model_context_length | default(65536) | int %}
 model:
   default: "{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
-  provider: "{{ hermes_model_provider }}"
+  provider: "{{ hermes_model_provider | default('custom') }}"
   base_url: "{{ lmstudio_base_url }}"
   api_key: "{{ hermes_model_api_key | default('lm-studio', true) }}"
+  api_mode: chat_completions
   # Hermes requires >=64K; LM Studio often defaults to 4096 unless overridden at load time.
   context_length: {{ ctx }}
-# Side tasks (compression, vision, etc.) inherit the main LM Studio model via provider: main.
-auxiliary:
-  vision:
-    provider: "main"
-    context_length: {{ ctx }}
-  web_extract:
-    provider: "main"
-    context_length: {{ ctx }}
-  approval:
-    provider: "main"
-    context_length: {{ ctx }}
-  compression:
-    provider: "main"
-    context_length: {{ ctx }}
-  session_search:
-    provider: "main"
-    context_length: {{ ctx }}
-  skills_hub:
-    provider: "main"
-    context_length: {{ ctx }}
-  mcp:
-    provider: "main"
-    context_length: {{ ctx }}
-  flush_memories:
-    provider: "main"
-    context_length: {{ ctx }}
-  title_generation:
-    provider: "main"
-    context_length: {{ ctx }}
-  tts_audio_tags:
-    provider: "main"
-    context_length: {{ ctx }}
-  triage_specifier:
-    provider: "main"
-    context_length: {{ ctx }}
-  kanban_decomposer:
-    provider: "main"
-    context_length: {{ ctx }}
-  profile_describer:
-    provider: "main"
-    context_length: {{ ctx }}
-  curator:
-    provider: "main"
-    context_length: {{ ctx }}
 gateway:
   enabled: true
   platform: "telegram"

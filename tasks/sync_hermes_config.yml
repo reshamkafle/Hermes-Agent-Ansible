@@ -4,6 +4,24 @@
 # Optional: target_user (for Debian become)
 # Sets (via resolve): lmstudio_effective_model, lmstudio_runtime_model
 
+- name: Stop Hermes gateway before rewriting config.yaml (macOS)
+  shell: "{{ playbook_dir }}/scripts/macos_launchd_gateway.sh stop {{ target_home | quote }}"
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: "{{ target_home }}"
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Stop Hermes gateway before rewriting config.yaml (Linux)
+  systemd:
+    name: hermes-workspace
+    state: stopped
+  become: true
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Debian'
+
 - name: Resolve LM Studio model identifiers for Hermes config
   import_tasks: resolve_lmstudio_model.yml
 
@@ -14,6 +32,38 @@
     mode: "0644"
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Load deployed Hermes config.yaml for sync verification
+  slurp:
+    path: "{{ target_home }}/.hermes/config.yaml"
+  register: hermes_config_verify_slurp
+
+- name: Require Hermes config.yaml synced with LM Studio context_length
+  vars:
+    hermes_config_verify_text: "{{ hermes_config_verify_slurp.content | b64decode }}"
+    hermes_config_verify_ctx: >-
+      {{
+        hermes_config_verify_text
+        | regex_findall('context_length:\\s*(\\d+)')
+        | map('int')
+        | list
+      }}
+    hermes_expected_ctx: "{{ hermes_model_context_length | default(65536) | int }}"
+  assert:
+    that:
+      - lmstudio_base_url in hermes_config_verify_text
+      - (lmstudio_runtime_model | default(lmstudio_effective_model)) in hermes_config_verify_text
+      - hermes_config_verify_ctx | length > 0
+      - (hermes_config_verify_ctx | min) >= 64000
+      - hermes_expected_ctx in hermes_config_verify_ctx
+    fail_msg: >-
+      {{ target_home }}/.hermes/config.yaml was not synced from vars.yml.
+      Expected LM Studio at {{ lmstudio_base_url }} with model
+      {{ lmstudio_runtime_model | default(lmstudio_effective_model) }} and
+      context_length={{ hermes_expected_ctx }} (hermes_model_context_length in vars.yml).
+      Found context_length values: {{ hermes_config_verify_ctx | default([]) }}.
+      A running Hermes gateway can revert config.yaml — sync stops the gateway first;
+      re-run ./deploy_local.sh or this smoke test.
 
 - name: Inject application keys into operational environment secrets (.env)
   template:
