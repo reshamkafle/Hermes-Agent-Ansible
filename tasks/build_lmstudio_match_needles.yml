@@ -21,20 +21,13 @@
     lmstudio_log_load_key: >-
       {{
         (
-          lms_get_log_tail.stdout | default('')
-          | regex_search('(?:to use, run:|lms load)\s+([^\s]+)', '\\1', ignorecase=true)
+          (lms_get_log_tail.stdout | default('') if (lms_get_log_tail is defined) else '')
+          | regex_findall('(?:to use, run:|lms load)\s+(\S+)', ignorecase=true)
+          | last
+          | default('')
+          | trim
         )
-        | default('', true)
-        | first
-        | default('')
-        | trim
       }}
-  when: lms_get_log_tail is defined
-
-- name: Default empty LM Studio log load key
-  set_fact:
-    lmstudio_log_load_key: ""
-  when: lms_get_log_tail is not defined
 
 - name: Detect LM Studio download-complete message in log
   set_fact:
