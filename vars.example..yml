@@ -6,16 +6,12 @@ hermes_user: "hermes"
 hermes_home: "/home/hermes"
 
 # --- LM Studio (local LLM) ---
-# macOS / Apple Silicon — explicit MLX repo (~6.7 GB; good for M4 + 32 GB RAM).
-# Used as Hermes model.default on Darwin. Change only here; playbooks read vars.yml.
-# Do NOT use short aliases like google/gemma-4-12b on macOS: `lms get --mlx` resolves
-# them to an LM Studio staff pick (often gemma-4-e2b) which may fail to download.
-# Playbooks auto-wrap org/repo as https://huggingface.co/... for `lms get --mlx --yes`.
-lmstudio_model: "lmstudio-community/gemma-4-12B-it-MLX-4bit"
-# Optional explicit download URL (overrides auto-wrap). Use when artifact resolution fails.
-# lmstudio_model_download_url: "https://huggingface.co/lmstudio-community/gemma-4-12B-it-MLX-4bit"
-# Linux / WSL2 — GGUF quant (MLX does not run on Linux).
+# LM Studio staff pick google/gemma-4-12b (GGUF from lmstudio-community/gemma-4-12B-it-GGUF).
+# Used as Hermes model.default. Change only here; playbooks read vars.yml.
+lmstudio_model: "google/gemma-4-12b@Q4_K_M"
 lmstudio_model_linux: "google/gemma-4-12b@Q4_K_M"
+# Explicit Hugging Face repo for `lms get --gguf` (avoids artifact mis-resolution).
+lmstudio_model_download_url: "https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF"
 # Download model during deploy (`lms get`). Set false if you already downloaded manually.
 lmstudio_download_model: true
 # Poll up to this many times (× lmstudio_wait_delay) for model to appear after `lms get`.

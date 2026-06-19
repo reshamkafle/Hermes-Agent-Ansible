@@ -27,9 +27,8 @@
     lmstudio_runtime_model: >-
       {{ lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model }}
 
-# Community models must use a full https://huggingface.co/... URL for `lms get`.
-# Passing org/repo (even lmstudio-community/gemma-4-12B-it-MLX-4bit) still hits LM Studio's
-# artifact resolver and can mis-resolve to the wrong staff pick (e.g. gemma-4-e2b).
+# Set lmstudio_model_download_url to a full https://huggingface.co/... URL for `lms get`.
+# Passing org/repo or staff picks alone can hit LM Studio's artifact resolver and mis-resolve.
 - name: Resolve LM Studio non-interactive download target
   set_fact:
     lmstudio_model_download_target: >-
@@ -48,9 +47,13 @@
       }}
     lmstudio_get_cli_flags: >-
       {{
-        (
-          '--mlx --yes' if (ansible_facts['os_family'] != 'Debian') else '--gguf --yes'
+        '--gguf --yes' if (
+          (ansible_facts['os_family'] == 'Debian')
+          or ('GGUF' in (lmstudio_model_download_url | default('') | upper))
+          or ('GGUF' in (lmstudio_effective_model | upper))
+          or ('gguf' in (lmstudio_effective_model | lower))
         )
+        else '--mlx --yes'
       }}
 
 - name: Show LM Studio model download plan
@@ -61,14 +64,13 @@
       load/config key: {{ lmstudio_runtime_model }} |
       load: lms load {{ lmstudio_runtime_model }} --yes
 
-- name: Warn when macOS model is a short alias that LM Studio may mis-resolve
+- name: Warn when model download URL is not set (artifact resolver may mis-pick)
   debug:
     msg: >-
-      lmstudio_model is "{{ lmstudio_effective_model }}" (a short hub alias).
-      `lms get` with --mlx may resolve to a different staff pick
-      (e.g. lmstudio-community/gemma-4-e2b-it-mlx-4bit instead of 12B).
-      Use a full repo path in vars.yml, e.g. lmstudio-community/gemma-4-12B-it-MLX-4bit
-      (playbooks auto-wrap org/repo as a Hugging Face URL for download).
+      lmstudio_model_download_url is not set for "{{ lmstudio_effective_model }}".
+      `lms get` may resolve to a different staff pick (e.g. gemma-4-e2b instead of 12B).
+      Set lmstudio_model_download_url in vars.yml, e.g.
+      https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF
   when:
-    - ansible_facts['os_family'] != 'Debian'
-    - lmstudio_get_cli_flags is search('--mlx')
+    - lmstudio_model_download_url | default('') | trim | length == 0
+    - not (lmstudio_effective_model is match('^https?://'))

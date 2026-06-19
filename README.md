@@ -161,7 +161,7 @@ Run `deploy_hermes.yml` first — skill playbooks expect `~/.hermes/` to exist.
 |--|--------------|---------------|
 | User / home | `hermes` → `/home/hermes` | Your login user → `~/` |
 | Config & skills | `/home/hermes/.hermes/` | `~/.hermes/` |
-| LLM model | GGUF via `lmstudio_model_linux` | MLX via `lmstudio_model` |
+| LLM model | GGUF via `lmstudio_model_linux` | GGUF via `lmstudio_model` |
 | LLM service | systemd (`llmster`) | `lms daemon up` + `lms server start` |
 | Scheduler | cron | LaunchAgents in `~/Library/LaunchAgents/` |
 | Gateway | systemd (`hermes-workspace`) | LaunchAgent (`com.hermes.gateway`) via `scripts/macos_launchd_gateway.sh` |
@@ -268,8 +268,8 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | Variable | Purpose |
 |----------|---------|
 | `hermes_start_agents` | Start gateway after deploy (default `true`; set `false` or `START_HERMES_AGENTS=0` to skip) |
-| `lmstudio_model` | MLX model for macOS — use a full repo path (e.g. `lmstudio-community/gemma-4-12B-it-MLX-4bit`); short aliases like `google/gemma-4-12b` can mis-resolve via `lms get --mlx` |
-| `lmstudio_model_linux` | GGUF model for Linux/WSL2 — set in `vars.yml` |
+| `lmstudio_model` | GGUF model for macOS — default `google/gemma-4-12b@Q4_K_M` (from `lmstudio-community/gemma-4-12B-it-GGUF`) |
+| `lmstudio_model_linux` | GGUF model for Linux/WSL2 — default `google/gemma-4-12b@Q4_K_M` |
 | `lmstudio_base_url` | LM Studio OpenAI-compatible API URL (default `http://127.0.0.1:1234/v1`) |
 | `lmstudio_server_port` | Port for `lms server start` (default `1234`) |
 | `lmstudio_download_model` | Run `lms get --yes` during deploy (default `true`; skips if model already on disk) |
@@ -277,7 +277,7 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | `lmstudio_load_model` | Run `lms load --yes` during deploy (default `true`; skips if model already in memory) |
 | `lmstudio_load_async_seconds` | Max time to wait for `lms load` to finish (default 3600s) |
 | `lmstudio_load_poll_interval` | Ansible poll interval while `lms load` runs (default 30s) |
-| `lmstudio_model_download_url` | Optional override; defaults to `https://huggingface.co/<lmstudio_model>` for org/repo IDs |
+| `lmstudio_model_download_url` | Hugging Face repo for `lms get --gguf` (default in example: `https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF`) |
 | `hermes_model_provider` | Hermes provider for LM Studio (default `custom`) |
 | `hermes_model_api_key` | LM Studio API token when auth is on; use `lm-studio` when auth is off |
 | `tracked_stocks` | Tickers for investment skill |
@@ -297,12 +297,12 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | Skill playbook fails | Core deploy must run first — use `deploy_local.sh` / `deploy_all.sh` |
 | `invalid choice: 'workspace'` | Pull latest playbooks (CLI commands changed) |
 | LM Studio 401 / auth errors | Enable token in LM Studio Developer → Require Authentication → Manage Tokens; set matching value in `hermes_model_api_key` |
-| `lms get` garbled output / deploy fails at model download | Playbooks download via Hugging Face URL: `lms get https://huggingface.co/<org>/<repo> --yes`. Log: `~/.hermes/logs/lms-get.log` |
-| Deploy stuck on `lms load` | Playbooks wait for `lms load --yes` to exit (poll every 30s) and match loaded models via `path`, `modelKey`, `identifier`, and `indexedModelIdentifier`. Log: `~/.hermes/logs/lms-load.log`. First load of a 12B MLX model can take 5–15 min |
-| `Model not found` / `lms load` fails | Re-run `./deploy_local.sh`. Playbooks run `lms get --mlx --yes` (macOS), poll disk with `lms ls --json --llm` (falls back to `--variants`), extract exact `path` values for `lms load`, and accept download hints from `~/.hermes/logs/lms-get.log`. Logs: `lms-get.log`, `lms-load.log`. If MLX runtime missing: LM Studio → Settings → Runtime → update MLX |
+| `lms get` garbled output / deploy fails at model download | Playbooks download via Hugging Face URL: `lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF --gguf --yes`. Log: `~/.hermes/logs/lms-get.log` |
+| Deploy stuck on `lms load` | Playbooks wait for `lms load --yes` to exit (poll every 30s) and match loaded models via `path`, `modelKey`, `identifier`, and `indexedModelIdentifier`. Log: `~/.hermes/logs/lms-load.log`. First load of a 12B GGUF model can take 5–15 min |
+| `Model not found` / `lms load` fails | Re-run `./deploy_local.sh`. Playbooks run `lms get --gguf --yes`, poll disk with `lms ls --json --llm` (falls back to `--variants`), extract exact `path` values for `lms load`, and accept download hints from `~/.hermes/logs/lms-get.log`. Logs: `lms-get.log`, `lms-load.log` |
 | `lms: command not found` in your shell | Deploy installs `~/.hermes/bin/lms` on PATH for playbooks; for interactive use run `source ~/.hermes/bin/lmstudio-path.sh` (or `export PATH="$HOME/.hermes/bin:$HOME/.cache/lm-studio/bin:$PATH"`) |
-| `Failed to resolve artifact lmstudio-community/gemma-4-e2b-...` | LM Studio's artifact resolver mis-picked a staff model. Playbooks now download via `https://huggingface.co/<org>/<repo>`. Re-run `./deploy_local.sh` |
-| Gemma 4 MLX load fails | Update LM Studio to latest; Gemma 4 needs recent mlx-engine. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
+| `Failed to resolve artifact lmstudio-community/gemma-4-e2b-...` | LM Studio's artifact resolver mis-picked a staff model. Set `lmstudio_model_download_url` to the full Hugging Face repo (e.g. `https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF`). Re-run `./deploy_local.sh` |
+| Gemma 4 load fails | Update LM Studio to latest. See [lmstudio.ai/models/gemma-4](https://lmstudio.ai/models/gemma-4) |
 | Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom` and `model.base_url` for LM Studio. Check logs in `~/.hermes/logs/` |
 | LM Studio / gateway smoke test fails | Run `./test_lmstudio_gateway.sh` — see [LM Studio and gateway](#lm-studio-and-gateway). Start LM Studio, load the model from `vars.yml`, then `./start_gateway.sh` if the gateway is down |
 | `no API keys or providers found` | Hermes needs `~/.hermes/config.yaml` (not just `.env`). Re-deploy or run the smoke test playbook — it syncs config from `vars.yml`. For LM Studio, `model.provider` must be `custom` with `base_url: http://127.0.0.1:1234/v1` and a non-empty `api_key` |

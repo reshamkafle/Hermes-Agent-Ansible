@@ -223,7 +223,7 @@
       Last `lms ps --json`: {{ lms_ps_after_load_debug | default('(none)') }}
       Re-run: ./deploy_local.sh
       If guardrails block loading, set modelLoadingGuardrails mode to "off" in LM Studio settings.
-      If MLX runtime is missing, open LM Studio → Settings → Runtime → update MLX engine.
+      If the runtime is missing, open LM Studio → Settings → Runtime and update the engine.
       Last log lines:
       {{ lms_load_log_tail.stdout | default('(log empty or missing)') }}
   when:
