@@ -1,0 +1,87 @@
+---
+# Build normalized match needles for LM Studio model detection across download, verify, and load.
+# Requires: lmstudio_model_base_id, lmstudio_effective_model
+# Optional: lms_get_log_tail.stdout (download log tail)
+# Sets: lmstudio_model_slug, lmstudio_model_slug_no_quant, lmstudio_log_load_key,
+#       lmstudio_log_confirms_download, lmstudio_match_needles
+
+- name: Derive LM Studio model slug variants from vars.yml
+  set_fact:
+    lmstudio_model_slug: "{{ lmstudio_model_base_id.split('/')[-1] | lower }}"
+    lmstudio_model_slug_no_quant: >-
+      {{
+        (lmstudio_model_base_id.split('/')[-1] | lower)
+        | regex_replace('[-_](4bit|8bit|q4_k_m|q8_0|mxfp4|gguf).*$', '')
+        | regex_replace('@.*$', '')
+        | trim
+      }}
+
+- name: Extract LM Studio load key hint from download log
+  set_fact:
+    lmstudio_log_load_key: >-
+      {{
+        (
+          lms_get_log_tail.stdout | default('')
+          | regex_search('(?:to use, run:|lms load)\s+([^\s]+)', '\\1', ignorecase=true)
+        )
+        | default('', true)
+        | first
+        | default('')
+        | trim
+      }}
+  when: lms_get_log_tail is defined
+
+- name: Default empty LM Studio log load key
+  set_fact:
+    lmstudio_log_load_key: ""
+  when: lms_get_log_tail is not defined
+
+- name: Detect LM Studio download-complete message in log
+  set_fact:
+    lmstudio_log_confirms_download: >-
+      {{
+        (lms_get_log_tail.stdout | default('') | lower)
+        is search('model already downloaded|satisfied .*\\[mlx\\]|satisfied .*\\[gguf\\]')
+      }}
+  when: lms_get_log_tail is defined
+
+- name: Default LM Studio log download confirmation flag
+  set_fact:
+    lmstudio_log_confirms_download: false
+  when: lms_get_log_tail is not defined
+
+- name: Assemble LM Studio match needle list
+  set_fact:
+    lmstudio_match_needles: >-
+      {{
+        (
+          [
+            lmstudio_effective_model,
+            lmstudio_model_base_id,
+            lmstudio_model_slug,
+            lmstudio_model_slug_no_quant,
+            lmstudio_log_load_key
+          ]
+          | map('string')
+          | map('trim')
+          | reject('equalto', '')
+          | map('lower')
+          | map('regex_replace', ':.*$', '')
+          | unique
+          | list
+        )
+      }}
+
+- name: Extend LM Studio match needles with resolved load candidates
+  set_fact:
+    lmstudio_match_needles: >-
+      {{
+        (lmstudio_match_needles | default([]) + (lmstudio_load_candidates | default([])))
+        | map('string')
+        | map('trim')
+        | reject('equalto', '')
+        | map('lower')
+        | unique
+        | list
+      }}
+  when: lmstudio_load_candidates | default([]) | length > 0

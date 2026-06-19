@@ -27,21 +27,8 @@
       Log: {{ target_home }}/.hermes/logs/lms-get.log
   when: not (lmstudio_model_on_disk | default(false) | bool)
 
-- name: Build LM Studio model match needles for loaded-model detection
-  set_fact:
-    lmstudio_match_needles: >-
-      {{
-        (
-          lmstudio_load_candidates | default([lmstudio_disk_model_key])
-          + [lmstudio_model_base_id, lmstudio_model_base_id.split('/')[-1]]
-        )
-        | map('string')
-        | map('lower')
-        | map('regex_replace', ':.*$', '')
-        | unique
-        | reject('equalto', '')
-        | list
-      }}
+- name: Build LM Studio model match needles for load
+  include_tasks: build_lmstudio_match_needles.yml
 
 - name: Show LM Studio model load plan
   debug:
@@ -88,7 +75,7 @@
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
-    SLUG="{{ lmstudio_model_slug | default(lmstudio_model_base_id.split('/')[-1] | lower) }}"
+    SLUG="{{ lmstudio_model_slug_no_quant | default(lmstudio_disk_model_key | default(lmstudio_model_slug | default(lmstudio_model_base_id.split('/')[-1] | lower))) }}"
     load_one() {
       local key="$1"
       echo "==> lms load $key --yes" >> "$LOG"
@@ -122,7 +109,7 @@
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
-    SLUG="{{ lmstudio_model_slug | default(lmstudio_model_base_id.split('/')[-1] | lower) }}"
+    SLUG="{{ lmstudio_model_slug_no_quant | default(lmstudio_disk_model_key | default(lmstudio_model_slug | default(lmstudio_model_base_id.split('/')[-1] | lower))) }}"
     load_one() {
       local key="$1"
       echo "==> lms load $key --yes" >> "$LOG"

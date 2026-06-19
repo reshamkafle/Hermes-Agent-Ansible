@@ -26,8 +26,8 @@
         target_home: "{{ ansible_facts['env']['HOME'] | default(lookup('env', 'HOME')) }}"
         target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
 
-    - name: Resolve LM Studio model from vars.yml
-      import_tasks: tasks/resolve_lmstudio_model.yml
+- name: Resolve LM Studio model from vars.yml
+  import_tasks: tasks/resolve_lmstudio_model.yml
 
     - name: Check Hermes home directory exists
       stat:

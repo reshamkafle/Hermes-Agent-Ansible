@@ -49,12 +49,22 @@
 - name: Test whether an LM Studio disk key matches the configured model
   set_fact:
     lmstudio_key_matches_config: >-
-      {{
-        (key | lower) == (lmstudio_model_base_id | lower)
-        or ((key | lower | regex_replace('.*/', '')) == (lmstudio_model_slug | default('')))
-      }}
-  vars:
-    key: "{{ item }}"
+      {%- set key_norm = (item | string | lower | regex_replace('.*/', '')) -%}
+      {%- set needles = lmstudio_match_needles | default([]) -%}
+      {%- set ns = namespace(found=false) -%}
+      {%- for n in needles -%}
+        {%- set n_norm = (n | string | lower | regex_replace('.*/', '')) -%}
+        {%- if n_norm and (
+          key_norm == n_norm
+          or n_norm in key_norm
+          or key_norm in n_norm
+          or (item | string | lower) == n_norm
+          or n_norm in (item | string | lower)
+        ) -%}
+          {%- set ns.found = true -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.found }}
   loop: "{{ lms_disk_model_keys | default([]) }}"
   loop_control:
     label: "{{ item }}"
@@ -83,20 +93,50 @@
   set_fact:
     lmstudio_load_candidates: >-
       {{
-        lmstudio_matched_keys
-        if (lmstudio_matched_keys | default([]) | length > 0)
-        else [lmstudio_model_base_id]
+        (
+          lmstudio_matched_keys
+          if (lmstudio_matched_keys | default([]) | length > 0)
+          else (
+            [lmstudio_log_load_key]
+            if (
+              (lmstudio_log_load_key | default('') | trim | length > 0)
+              and (lmstudio_log_confirms_download | default(false) | bool)
+            )
+            else [lmstudio_model_slug_no_quant, lmstudio_model_slug, lmstudio_model_base_id]
+          )
+        )
+        | map('string')
+        | map('trim')
+        | reject('equalto', '')
+        | unique
+        | list
       }}
     lmstudio_disk_model_key: >-
       {{
         lmstudio_matched_keys | first
         if (lmstudio_matched_keys | default([]) | length > 0)
-        else lmstudio_model_base_id
+        else (
+          lmstudio_log_load_key
+          if (
+            (lmstudio_log_load_key | default('') | trim | length > 0)
+            and (lmstudio_log_confirms_download | default(false) | bool)
+          )
+          else (
+            lmstudio_model_slug_no_quant
+            if (lmstudio_model_slug_no_quant | default('') | trim | length > 0)
+            else lmstudio_model_base_id
+          )
+        )
       }}
     lmstudio_runtime_model: >-
       {{
-        lmstudio_matched_keys | first
-        if (lmstudio_matched_keys | default([]) | length > 0)
-        else lmstudio_model_base_id
+        lmstudio_disk_model_key
       }}
-    lmstudio_model_on_disk: "{{ (lmstudio_matched_keys | default([]) | length) > 0 }}"
+    lmstudio_model_on_disk: >-
+      {{
+        (lmstudio_matched_keys | default([]) | length > 0)
+        or (
+          (lmstudio_log_confirms_download | default(false) | bool)
+          and (lmstudio_log_load_key | default('') | trim | length > 0)
+        )
+      }}
