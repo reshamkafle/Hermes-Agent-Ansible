@@ -18,15 +18,29 @@
 
 - name: Extract LM Studio load key hint from download log
   set_fact:
-    lmstudio_log_load_key: >-
+    lmstudio_log_load_key_raw: >-
       {{
         (
           (lms_get_log_tail.stdout | default('') if (lms_get_log_tail is defined) else '')
-          | regex_findall('(?:to use, run:|lms load)\s+(\S+)', ignorecase=true)
+          | regex_findall('(?i)lms load\\s+(\\S+)', ignorecase=true)
           | last
           | default('')
           | trim
+          | regex_replace('--yes$', '')
+          | trim
         )
+      }}
+
+- name: Reject invalid LM Studio load key hints from download log
+  set_fact:
+    lmstudio_log_load_key: >-
+      {{
+        lmstudio_log_load_key_raw
+        if (
+          (lmstudio_log_load_key_raw | default('') | trim | length >= 4)
+          and (lmstudio_log_load_key_raw | lower not in ['lms', 'load', '--yes', '-y', 'yes'])
+        )
+        else ''
       }}
 
 - name: Detect LM Studio download-complete message in log

@@ -95,16 +95,16 @@
     lmstudio_load_candidates: >-
       {{
         (
-          lmstudio_matched_keys
-          if (lmstudio_matched_keys | default([]) | length > 0)
-          else (
+          (lmstudio_matched_keys | default([]))
+          + (
             [lmstudio_log_load_key]
             if (
               (lmstudio_log_load_key | default('') | trim | length > 0)
               and (lmstudio_log_confirms_download | default(false) | bool)
             )
-            else [lmstudio_model_slug_no_quant, lmstudio_model_slug, lmstudio_model_base_id]
+            else []
           )
+          + [lmstudio_model_slug_no_quant, lmstudio_model_slug, lmstudio_model_base_id]
         )
         | map('string')
         | map('trim')
@@ -132,10 +132,7 @@
     lmstudio_model_on_disk: >-
       {{
         (lmstudio_matched_keys | default([]) | length > 0)
-        or (
-          (lmstudio_log_confirms_download | default(false) | bool)
-          and (lmstudio_log_load_key | default('') | trim | length > 0)
-        )
+        or (lmstudio_log_confirms_download | default(false) | bool)
       }}
 
 - name: Set LM Studio runtime model from resolved disk key
