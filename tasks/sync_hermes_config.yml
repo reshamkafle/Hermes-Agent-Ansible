@@ -1,13 +1,11 @@
 ---
 # Deploy Hermes config.yaml, .env secrets, and hermes-run.sh wrapper.
-# Requires: target_home, hermes_path_prefix, ansible_facts['os_family']
+# Requires: hermes_path_prefix, ansible_facts['os_family']
 # Optional: target_user (for Debian become), hermes_cmd (for CLI config apply)
 # Sets (via resolve): lmstudio_effective_model, lmstudio_runtime_model
 
-- name: Pin target home to Ansible user directory (macOS local deploy)
-  set_fact:
-    target_home: "{{ ansible_user_dir }}"
-  when: ansible_facts['os_family'] == 'Darwin'
+- name: Establish Hermes deployment paths
+  import_tasks: establish_target_home.yml
 
 - name: Stop Hermes gateway before rewriting config.yaml (macOS)
   shell: |
@@ -36,9 +34,22 @@
 
 - name: Ensure Hermes home directory exists before config write
   file:
-    path: "{{ target_home }}/.hermes"
+    path: "{{ hermes_home_dir }}"
     state: directory
     mode: "0755"
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Render Hermes .env from vars.yml
+  set_fact:
+    hermes_env_rendered: "{{ lookup('template', playbook_dir + '/templates/hermes.env.j2') }}"
+
+- name: Write Hermes .env (force overwrite stale Ollama values)
+  copy:
+    content: "{{ hermes_env_rendered }}"
+    dest: "{{ hermes_env_path }}"
+    mode: "0600"
+    force: true
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
@@ -49,7 +60,7 @@
 - name: Write Hermes config.yaml (force overwrite)
   copy:
     content: "{{ hermes_config_rendered }}"
-    dest: "{{ target_home }}/.hermes/config.yaml"
+    dest: "{{ hermes_config_path }}"
     mode: "0644"
     force: true
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
@@ -64,18 +75,38 @@
     "$H" config set model.base_url "{{ lmstudio_base_url }}"
     "$H" config set model.api_key "{{ hermes_model_api_key | default('lm-studio', true) }}"
     "$H" config set model.context_length "{{ hermes_model_context_length | default(65536) }}"
+    "$H" config set auxiliary.compression.provider "main"
+    "$H" config set auxiliary.compression.context_length "{{ hermes_model_context_length | default(65536) }}"
   args:
     executable: /bin/bash
   environment:
     HOME: "{{ target_home }}"
+    HERMES_HOME: "{{ hermes_home_dir }}"
     PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
   when: hermes_cmd | default('') | trim | length > 0
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
 
+- name: Load deployed Hermes .env for sync verification
+  slurp:
+    path: "{{ hermes_env_path }}"
+  register: hermes_env_verify_slurp
+
+- name: Require Hermes .env synced to LM Studio (not stale Ollama)
+  vars:
+    hermes_env_verify_text: "{{ hermes_env_verify_slurp.content | b64decode }}"
+  assert:
+    that:
+      - lmstudio_base_url in hermes_env_verify_text
+      - hermes_env_verify_text is not search('127\\.0\\.0\\.1:11434')
+      - hermes_env_verify_text is not search('(?i)ollama')
+    fail_msg: >-
+      {{ hermes_env_path }} still points at Ollama (port 11434) or is missing LM Studio URL
+      {{ lmstudio_base_url }}. Re-run ./deploy_local.sh so sync_hermes_config.yml overwrites .env.
+
 - name: Load deployed Hermes config.yaml for sync verification
   slurp:
-    path: "{{ target_home }}/.hermes/config.yaml"
+    path: "{{ hermes_config_path }}"
   register: hermes_config_verify_slurp
 
 - name: Require Hermes config.yaml synced with LM Studio context_length
@@ -83,7 +114,9 @@
     hermes_config_verify_text: "{{ hermes_config_verify_slurp.content | b64decode }}"
     hermes_config_parsed: "{{ hermes_config_verify_text | from_yaml }}"
     hermes_model_section: "{{ hermes_config_parsed.model | default({}) }}"
+    hermes_compression_section: "{{ hermes_config_parsed.auxiliary.compression | default({}) }}"
     hermes_model_ctx: "{{ hermes_model_section.context_length | default(0) | int }}"
+    hermes_compression_ctx: "{{ hermes_compression_section.context_length | default(0) | int }}"
     hermes_expected_ctx: "{{ hermes_model_context_length | default(65536) | int }}"
     hermes_expected_model: "{{ lmstudio_effective_model }}"
     hermes_expected_base_url: "{{ lmstudio_base_url }}"
@@ -93,26 +126,20 @@
       - hermes_model_section.default | default('') == hermes_expected_model
       - hermes_model_ctx >= 64000
       - hermes_model_ctx == hermes_expected_ctx
+      - hermes_compression_ctx >= 64000
     fail_msg: >-
-      {{ target_home }}/.hermes/config.yaml was not synced from vars.yml.
+      {{ hermes_config_path }} was not synced from vars.yml.
       Expected LM Studio at {{ hermes_expected_base_url }} with model
       {{ hermes_expected_model }} and context_length={{ hermes_expected_ctx }}
       (hermes_model_context_length in vars.yml).
       Parsed model section: {{ hermes_model_section | to_nice_json }}.
+      Parsed compression section: {{ hermes_compression_section | to_nice_json }}.
       A running Hermes gateway can revert config.yaml — sync stops it first;
       re-run ./deploy_local.sh or this smoke test.
 
-- name: Inject application keys into operational environment secrets (.env)
-  template:
-    src: "{{ playbook_dir }}/templates/hermes.env.j2"
-    dest: "{{ target_home }}/.hermes/.env"
-    mode: "0600"
-  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
-  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
-
 - name: Ensure Hermes runtime helper directory exists
   file:
-    path: "{{ target_home }}/.hermes/bin"
+    path: "{{ hermes_home_dir }}/bin"
     state: directory
     mode: "0755"
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
@@ -121,7 +148,7 @@
 - name: Deploy Hermes runtime wrapper (sources .env before CLI commands)
   template:
     src: "{{ playbook_dir }}/templates/hermes_run.sh.j2"
-    dest: "{{ target_home }}/.hermes/bin/hermes-run.sh"
+    dest: "{{ hermes_home_dir }}/bin/hermes-run.sh"
     mode: "0755"
   become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
   become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"

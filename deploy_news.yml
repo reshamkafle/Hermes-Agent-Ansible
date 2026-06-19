@@ -9,8 +9,10 @@
   tasks:
     # Set workspace and home directory variables dynamically across hosts
     - name: Establish operational workspace path variables
+      import_tasks: tasks/establish_target_home.yml
+
+    - name: Set deployment user for file ownership
       set_fact:
-        target_home: "{{ hermes_home if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['HOME'] | default(lookup('env', 'HOME'))) }}"
         target_user: "{{ hermes_user if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['USER'] | default(ansible_user_id)) }}"
 
     - name: Resolve Hermes CLI path

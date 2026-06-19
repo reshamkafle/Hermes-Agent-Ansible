@@ -23,8 +23,10 @@
         file: "{{ playbook_dir }}/vars.yml"
 
     - name: Establish workspace path variables
+      import_tasks: tasks/establish_target_home.yml
+
+    - name: Set deployment user for file ownership
       set_fact:
-        target_home: "{{ ansible_facts['env']['HOME'] | default(ansible_user_dir) }}"
         target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
 
     - name: Resolve LM Studio model from vars.yml
@@ -94,7 +96,7 @@
 
     - name: Check Hermes model config exists
       stat:
-        path: "{{ target_home }}/.hermes/config.yaml"
+        path: "{{ hermes_config_path }}"
       register: hermes_config_stat
 
     - name: Require Hermes model provider config
@@ -103,12 +105,12 @@
           - hermes_config_stat.stat.exists
           - hermes_config_stat.stat.size | int > 0
         fail_msg: >-
-          {{ target_home }}/.hermes/config.yaml is missing or empty. Run
+          {{ hermes_config_path }} is missing or empty. Run
           deploy_hermes.yml or ./deploy_local.sh to deploy the LM Studio provider config.
 
     - name: Load deployed Hermes config.yaml for validation
       slurp:
-        path: "{{ target_home }}/.hermes/config.yaml"
+        path: "{{ hermes_config_path }}"
       register: hermes_config_slurp
 
     - name: Require Hermes config synced to LM Studio (not stale Ollama/manual config)
@@ -116,22 +118,43 @@
         hermes_config_text: "{{ hermes_config_slurp.content | b64decode }}"
         hermes_config_parsed: "{{ hermes_config_text | from_yaml }}"
         hermes_model_section: "{{ hermes_config_parsed.model | default({}) }}"
+        hermes_compression_section: "{{ hermes_config_parsed.auxiliary.compression | default({}) }}"
         hermes_model_ctx: "{{ hermes_model_section.context_length | default(0) | int }}"
+        hermes_compression_ctx: "{{ hermes_compression_section.context_length | default(0) | int }}"
       assert:
         that:
           - hermes_model_section.base_url | default('') == lmstudio_base_url
           - hermes_model_section.default | default('') == lmstudio_effective_model
           - hermes_model_ctx >= 64000
           - hermes_model_ctx == (hermes_model_context_length | default(65536) | int)
+          - hermes_compression_ctx >= 64000
         fail_msg: >-
-          {{ target_home }}/.hermes/config.yaml was not synced from vars.yml.
+          {{ hermes_config_path }} was not synced from vars.yml.
           Hermes must use LM Studio at {{ lmstudio_base_url }} with model
           {{ lmstudio_effective_model }} and
           context_length >= 64000 (hermes_model_context_length in vars.yml).
           Parsed model section: {{ hermes_model_section | to_nice_json }}.
+          Parsed compression section: {{ hermes_compression_section | to_nice_json }}.
           A running Hermes gateway can revert config.yaml — sync stops it first.
           LM Studio load context alone is not enough — re-run ./deploy_local.sh or this
           smoke test so sync_hermes_config.yml overwrites config.yaml.
+
+    - name: Load deployed Hermes .env for validation
+      slurp:
+        path: "{{ hermes_env_path }}"
+      register: hermes_env_slurp
+
+    - name: Require Hermes .env synced to LM Studio (not stale Ollama)
+      vars:
+        hermes_env_text: "{{ hermes_env_slurp.content | b64decode }}"
+      assert:
+        that:
+          - lmstudio_base_url in hermes_env_text
+          - hermes_env_text is not search('127\\.0\\.0\\.1:11434')
+        fail_msg: >-
+          {{ hermes_env_path }} still points at Ollama (port 11434). Hermes auxiliary
+          tasks with provider "main" read OPENAI_BASE_URL from .env — stale Ollama URLs
+          cause ~6K context errors even when config.yaml is correct. Re-run this smoke test.
 
     - name: Verify LM Studio endpoint is reachable
       uri:
@@ -159,9 +182,13 @@
 
     - name: Run Hermes daily morning digest skill (same command as 6 AM scheduler)
       shell: |
-        exec "{{ target_home }}/.hermes/bin/hermes-run.sh" chat -Q -q 'Run the daily-morning-digest skill according to its instructions.' --skills daily-morning-digest --yolo
+        exec "{{ hermes_home_dir }}/bin/hermes-run.sh" chat -Q -q 'Run the daily-morning-digest skill according to its instructions.' --skills daily-morning-digest --yolo
       args:
         executable: /bin/bash
+      environment:
+        HOME: "{{ target_home }}"
+        HERMES_HOME: "{{ hermes_home_dir }}"
+        PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
       register: hermes_digest_run
       async: "{{ smoke_test_timeout_seconds | default(1800) }}"
       poll: 30
@@ -174,9 +201,9 @@
           Hermes daily-morning-digest failed (rc={{ hermes_digest_run.rc }}).
           stderr: {{ hermes_digest_run.stderr | default('') | trim }}.
           If you see "Context length exceeded (N tokens)", check that
-          {{ target_home }}/.hermes/config.yaml was synced (base_url={{ lmstudio_base_url }},
-          context_length={{ hermes_model_context_length | default(65536) }}) — not a stale Ollama
-          config on port 11434. Re-run ./deploy_local.sh, then reload LM Studio:
+          {{ hermes_config_path }} and {{ hermes_env_path }} were synced
+          (base_url={{ lmstudio_base_url }}, context_length={{ hermes_model_context_length | default(65536) }}) — not a stale Ollama
+          .env on port 11434. Re-run ./deploy_local.sh, then reload LM Studio:
           `lms unload && lms load {{ lmstudio_effective_model }}
           --context-length {{ hermes_model_context_length | default(65536) }} --yes`.
           Check {{ target_home }}/.hermes/logs/dailydigest.stderr.log if present.

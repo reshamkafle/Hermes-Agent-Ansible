@@ -22,8 +22,10 @@
         file: "{{ playbook_dir }}/vars.yml"
 
     - name: Establish workspace path variables
+      import_tasks: tasks/establish_target_home.yml
+
+    - name: Set deployment user for file ownership
       set_fact:
-        target_home: "{{ ansible_facts['env']['HOME'] | default(lookup('env', 'HOME')) }}"
         target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
 
 - name: Resolve LM Studio model from vars.yml

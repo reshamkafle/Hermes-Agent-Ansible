@@ -6,6 +6,20 @@ model:
   api_key: "{{ hermes_model_api_key | default('lm-studio', true) }}"
   api_mode: chat_completions
   context_length: {{ ctx }}
+# Side tasks must inherit the main LM Studio endpoint (provider: main) with the same context window.
+auxiliary:
+  compression:
+    provider: "main"
+    context_length: {{ ctx }}
+  web_extract:
+    provider: "main"
+    context_length: {{ ctx }}
+  session_search:
+    provider: "main"
+    context_length: {{ ctx }}
+  vision:
+    provider: "main"
+    context_length: {{ ctx }}
 gateway:
   enabled: true
   platform: "telegram"
