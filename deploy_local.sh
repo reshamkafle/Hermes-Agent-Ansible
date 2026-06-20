@@ -50,6 +50,10 @@ else
   exit 1
 fi
 
+if ! bash "$SCRIPT_DIR/scripts/validate_vars.sh" "$VARS_FILE"; then
+  exit 1
+fi
+
 LMSTUDIO_MODEL="$(bash "$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model "$VARS_FILE")"
 LMSTUDIO_MODEL_LINUX="$(bash "$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model_linux "$VARS_FILE")"
 LMSTUDIO_DOWNLOAD_URL="$(bash "$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model_download_url "$VARS_FILE")"

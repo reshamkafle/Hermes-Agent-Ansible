@@ -1,5 +1,5 @@
+---
 # vars.example.yml
-
 
 # --- System & Deployment Configurations ---
 hermes_user: "hermes"
@@ -7,23 +7,23 @@ hermes_home: "/home/hermes"
 
 # --- LM Studio (local LLM) ---
 # LM Studio staff pick google/gemma-4-12b@q4_k_m (GGUF from lmstudio-community/gemma-4-12B-it-GGUF).
-# REQUIRED: include @quant tag — bare google/gemma-4-12b matches MLX and is rejected.
-# Set lmstudio_model to the staff pick OR the full path from `lms ls` — deploy resolves filename → path automatically.
-# Used as Hermes model.default and `lms load` key. Change only here; playbooks read vars.yml.
+# REQUIRED: include @quant tag - bare google/gemma-4-12b matches MLX and is rejected.
+# Set lmstudio_model to the staff pick OR the full path from lms ls (deploy resolves filename to path).
+# Used as Hermes model.default and lms load key. Change only here; playbooks read vars.yml.
 lmstudio_model: "google/gemma-4-12b@q4_k_m"
 lmstudio_model_linux: "google/gemma-4-12b@q4_k_m"
-# Explicit Hugging Face repo for `lms get --gguf` (avoids artifact mis-resolution).
+# Explicit Hugging Face repo for lms get --gguf (avoids artifact mis-resolution).
 lmstudio_model_download_url: "https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF"
-# Download model during deploy (`lms get`). Set false if you already downloaded manually.
+# Download model during deploy (lms get). Set false if you already downloaded manually.
 lmstudio_download_model: true
-# Poll up to this many times (× lmstudio_wait_delay) for model to appear after `lms get`.
+# Poll up to this many times (x lmstudio_wait_delay) for model to appear after lms get.
 lmstudio_wait_retries: 36
 lmstudio_wait_delay: 10
 # OpenAI-compatible API URL for Hermes (custom provider) and ~/.hermes/.env.
 lmstudio_base_url: "http://127.0.0.1:1234/v1"
-# Port for `lms server start` (must match lmstudio_base_url).
+# Port for lms server start (must match lmstudio_base_url).
 lmstudio_server_port: 1234
-# Load the model into memory during deploy (`lms load`).
+# Load the model into memory during deploy (lms load).
 lmstudio_load_model: true
 # Start the LM Studio API server after deploy.
 lmstudio_start_server: true
@@ -38,12 +38,12 @@ lmstudio_daemon_up_retries: 3
 lmstudio_load_async_seconds: 3600
 lmstudio_load_poll_interval: 30
 
-# Hermes → LM Studio routing (~/.hermes/config.yaml).
+# Hermes -> LM Studio routing (~/.hermes/config.yaml).
 hermes_model_provider: "custom"
-# LM Studio API token when Require Authentication is on; use "lm-studio" when auth is off.
+# LM Studio API token when Require Authentication is on; use lm-studio when auth is off.
 hermes_model_api_key: "lm-studio"
-# Context window for Hermes and `lms load --context-length` (minimum 64000 for Hermes Agent).
-# Must match LM Studio load settings; Hermes reads this from ~/.hermes/config.yaml (not LM Studio alone).
+# Context window for Hermes and lms load --context-length (minimum 64000 for Hermes Agent).
+# Must match LM Studio load settings; Hermes reads this from ~/.hermes/config.yaml.
 hermes_model_context_length: 65536
 hermes_start_agents: true
 
@@ -59,7 +59,7 @@ firecrawl_api_key: ""
 # --- Telegram (numeric IDs from @userinfobot or similar) ---
 telegram_chat_id: ""
 telegram_allowed_users:
-  - ""  # Recipient A User ID
+  - ""
 
 # --- Investment Tracker Stocks ---
 tracked_stocks:

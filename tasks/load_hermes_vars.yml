@@ -16,15 +16,13 @@
 - name: Resolve Hermes vars file path
   set_fact:
     hermes_vars_path: >-
-      {{
-        playbook_dir ~ '/vars.yml'
-        if (hermes_vars_yml_stat.stat.exists | default(false) | bool)
-        else (
-          playbook_dir ~ '/vars.yaml'
-          if (hermes_vars_yaml_stat.stat.exists | default(false) | bool)
-          else ''
-        )
-      }}
+      {%- if hermes_vars_yml_stat.stat.exists | default(false) | bool -%}
+      {{ playbook_dir }}/vars.yml
+      {%- elif hermes_vars_yaml_stat.stat.exists | default(false) | bool -%}
+      {{ playbook_dir }}/vars.yaml
+      {%- else -%}
+      {{ '' }}
+      {%- endif -%}
 
 - name: Require vars.yml or vars.yaml beside playbook
   fail:
@@ -33,6 +31,12 @@
       Copy vars.example..yml to vars.yml and set lmstudio_model
       (e.g. google/gemma-4-12b@q4_k_m).
   when: hermes_vars_path | default('') | trim | length == 0
+
+- name: Validate vars file YAML syntax before load
+  command: "bash {{ playbook_dir }}/scripts/validate_vars.sh '{{ hermes_vars_path }}'"
+  changed_when: false
+  delegate_to: localhost
+  run_once: true
 
 - name: Load Hermes deployment variables from vars file
   include_vars:
