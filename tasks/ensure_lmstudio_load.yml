@@ -66,33 +66,27 @@
       Configured model: {{ lmstudio_effective_model }}.
   when: lmstudio_skip_load_due_to_memory | default(false) | bool
 
-- name: Build ordered LM Studio load candidate list
+- name: Build ordered LM Studio load candidate list (GGUF — vars.yml key only)
+  set_fact:
+    lmstudio_load_attempts:
+      - "{{ lmstudio_effective_model }}"
+  when:
+    - lmstudio_prefers_gguf | default(false) | bool
+    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
+
+- name: Build ordered LM Studio load candidate list (non-GGUF)
   set_fact:
     lmstudio_load_attempts_raw: >-
       {{
         (
           [lmstudio_effective_model]
-          + (
-            lmstudio_load_candidates | default([])
-            | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
-            | list
-          )
+          + (lmstudio_load_candidates | default([]))
           + (
             [lmstudio_disk_model_key]
-            if (
-              (lmstudio_disk_model_key | default('') | trim | length > 0)
-              and not (
-                lmstudio_disk_model_key | default('')
-                is search('(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
-              )
-            )
+            if (lmstudio_disk_model_key | default('') | trim | length > 0)
             else []
           )
-          + (
-            [lmstudio_model_base_id]
-            if not (lmstudio_prefers_gguf | default(false) | bool)
-            else []
-          )
+          + [lmstudio_model_base_id]
         )
         | map('string')
         | map('trim')
@@ -100,21 +94,26 @@
         | unique
         | list
       }}
+  when:
+    - not (lmstudio_prefers_gguf | default(false) | bool)
+    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
 
-- name: Drop MLX LM Studio candidates when vars.yml targets GGUF
-  set_fact:
-    lmstudio_load_attempts: >-
-      {{
-        lmstudio_load_attempts_raw
-        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
-        | list
-      }}
-  when: lmstudio_prefers_gguf | default(false) | bool
+- name: Filter MLX keys from non-GGUF load candidate list
+  include_tasks: filter_lmstudio_mlx_keys.yml
+  vars:
+    lmstudio_keys_to_filter: "{{ lmstudio_load_attempts_raw | default([]) }}"
+  when:
+    - not (lmstudio_prefers_gguf | default(false) | bool)
+    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
+    - lmstudio_load_attempts_raw is defined
 
-- name: Use full LM Studio load candidate list
+- name: Use filtered non-GGUF LM Studio load candidate list
   set_fact:
-    lmstudio_load_attempts: "{{ lmstudio_load_attempts_raw }}"
-  when: lmstudio_load_attempts is not defined
+    lmstudio_load_attempts: "{{ lmstudio_filtered_keys | default(lmstudio_load_attempts_raw | default([])) }}"
+  when:
+    - not (lmstudio_prefers_gguf | default(false) | bool)
+    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
+    - lmstudio_load_attempts is not defined
 
 - name: Show LM Studio load attempts
   debug:

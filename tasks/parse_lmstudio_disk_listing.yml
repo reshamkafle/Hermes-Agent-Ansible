@@ -85,17 +85,23 @@
 - name: Drop MLX disk paths when vars.yml targets GGUF
   set_fact:
     lms_disk_model_paths: >-
-      {{
-        lms_disk_model_paths | default([])
-        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
-        | list
-      }}
+      {%- set out = [] -%}
+      {%- for p in lms_disk_model_paths | default([]) | map('string') | list -%}
+        {%- set pl = p | lower -%}
+        {%- if not ('-mlx' in pl or '/mlx' in pl or '[mlx]' in pl or '_mlx' in pl) -%}
+          {%- set _ = out.append(p) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
     lms_disk_model_keys: >-
-      {{
-        lms_disk_model_keys | default([])
-        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
-        | list
-      }}
+      {%- set out = [] -%}
+      {%- for k in lms_disk_model_keys | default([]) | map('string') | list -%}
+        {%- set kl = k | lower -%}
+        {%- if not ('-mlx' in kl or '/mlx' in kl or '[mlx]' in kl or '_mlx' in kl) -%}
+          {%- set _ = out.append(k) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
   when: lmstudio_prefers_gguf | default(false) | bool
 
 - name: Test whether an LM Studio disk path/key matches the configured model
@@ -144,11 +150,14 @@
 - name: Drop MLX disk keys when vars.yml targets GGUF
   set_fact:
     lmstudio_matched_keys: >-
-      {{
-        lmstudio_matched_keys | default([])
-        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
-        | list
-      }}
+      {%- set out = [] -%}
+      {%- for k in lmstudio_matched_keys | default([]) | map('string') | list -%}
+        {%- set kl = k | lower -%}
+        {%- if not ('-mlx' in kl or '/mlx' in kl or '[mlx]' in kl or '_mlx' in kl) -%}
+          {%- set _ = out.append(k) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
   when: lmstudio_prefers_gguf | default(false) | bool
 
 - name: Prefer matched LM Studio load paths over keys
@@ -187,7 +196,6 @@
         | map('string')
         | map('trim')
         | reject('equalto', '')
-        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
         | list
         | unique
         | list

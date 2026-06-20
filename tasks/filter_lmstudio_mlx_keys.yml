@@ -1,0 +1,22 @@
+---
+# Filter MLX model keys/paths out of a candidate list when vars.yml targets GGUF.
+# Requires: lmstudio_keys_to_filter (list)
+# Sets: lmstudio_filtered_keys
+
+- name: Drop MLX keys from LM Studio candidate list
+  set_fact:
+    lmstudio_filtered_keys: >-
+      {%- set out = [] -%}
+      {%- for k in lmstudio_keys_to_filter | default([]) | map('string') | list -%}
+        {%- set kl = k | lower -%}
+        {%- if not (
+          '-mlx' in kl
+          or '/mlx' in kl
+          or '[mlx]' in kl
+          or '_mlx' in kl
+          or kl.endswith('-mlx')
+        ) -%}
+          {%- set _ = out.append(k) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out | unique | list }}
