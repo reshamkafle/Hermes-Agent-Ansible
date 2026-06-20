@@ -249,7 +249,7 @@
               {%- set ns.source = 'lms ps text: ' ~ slug -%}
             {%- elif slug and (slug in val_l) -%}
               {%- set ns.source = 'slug match: ' ~ val -%}
-            {%- elif prefers_gguf and slug and (val_l is search('(?i)(\\.gguf|q4_k_m|q8_0|gguf)')) and (slug in val_l) -%}
+            {%- elif prefers_gguf and slug and (val_l is search('(?i)(\\.gguf|qat|q4_k_m|q8_0|gguf)')) and (slug in val_l) -%}
               {%- set ns.source = 'loaded gguf: ' ~ val -%}
             {%- elif prefers_gguf and quant_norm and slug and (quant_norm in val_norm) and (slug in val_l) -%}
               {%- set ns.source = 'loaded quant match: ' ~ val -%}

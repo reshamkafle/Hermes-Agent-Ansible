@@ -26,7 +26,11 @@
       {{ lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model }}
   set_fact:
     lmstudio_effective_model: "{{ lmstudio_vars_model }}"
-    lmstudio_model_base_id: "{{ lmstudio_vars_model.split('@')[0] }}"
+    lmstudio_model_base_id: >-
+      {{
+        lmstudio_vars_model.split('@')[0]
+        | regex_replace('[-_](qat|q4_k_m|q8_0|4bit|8bit|mxfp4)$', '', ignorecase=true)
+      }}
     lmstudio_runtime_model: "{{ lmstudio_vars_model }}"
     lmstudio_model_quant_tag: >-
       {{
@@ -38,7 +42,11 @@
           else (
             'q8_0'
             if (lmstudio_vars_model | lower is search('q8_0'))
-            else ''
+            else (
+              'qat'
+              if (lmstudio_vars_model | lower is search('[-_]qat'))
+              else ''
+            )
           )
         )
       }}
@@ -46,6 +54,9 @@
       {{
         ('@' in (lmstudio_vars_model | default('')))
         or ('.gguf' in (lmstudio_vars_model | default('') | lower))
+        or (lmstudio_vars_model | lower is search('[-_]qat$'))
+        or (lmstudio_vars_model | lower is search('q4_k_m'))
+        or (lmstudio_vars_model | lower is search('q8_0'))
       }}
 
 # Set lmstudio_model_download_url to a full https://huggingface.co/... URL for `lms get`.
@@ -70,6 +81,7 @@
       {{
         (ansible_facts['os_family'] == 'Debian')
         or ('@' in (lmstudio_effective_model | default('')))
+        or (lmstudio_effective_model | lower is search('[-_]qat$'))
         or ('GGUF' in (lmstudio_model_download_url | default('') | upper))
         or ('GGUF' in (lmstudio_effective_model | upper))
         or ('gguf' in (lmstudio_effective_model | lower))
@@ -79,6 +91,7 @@
         '--gguf --yes' if (
           (ansible_facts['os_family'] == 'Debian')
           or ('@' in (lmstudio_effective_model | default('')))
+          or (lmstudio_effective_model | lower is search('[-_]qat$'))
           or ('GGUF' in (lmstudio_model_download_url | default('') | upper))
           or ('GGUF' in (lmstudio_effective_model | upper))
           or ('gguf' in (lmstudio_effective_model | lower))
@@ -89,9 +102,9 @@
 - name: Require GGUF staff pick with quant tag in vars.yml
   fail:
     msg: >-
-      lmstudio_model must include a quant tag for GGUF (e.g. org/model@q4_k_m).
+      lmstudio_model must include a quant suffix for GGUF (e.g. google/gemma-4-12b-qat or org/model@q4_k_m).
       Set lmstudio_model / lmstudio_model_linux in {{ hermes_vars_path | default('vars.yml') }}.
-      Bare staff picks without @quant match MLX variants and are rejected.
+      Bare google/gemma-4-12b without -qat or @quant matches MLX variants and is rejected.
   when:
     - lmstudio_prefers_gguf | default(false) | bool
     - not (lmstudio_strict_model_key | default(false) | bool)

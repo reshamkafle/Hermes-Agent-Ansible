@@ -29,7 +29,7 @@
     msg: >-
       No vars.yml or vars.yaml found in {{ playbook_dir }}.
       Copy vars.example..yml to vars.yml and set lmstudio_model
-      (e.g. google/gemma-4-12b@q4_k_m).
+      (e.g. google/gemma-4-12b-qat).
   when: hermes_vars_path | default('') | trim | length == 0
 
 - name: Validate vars file YAML syntax before load

@@ -62,7 +62,7 @@ Logs: `~/.hermes/logs/`
 | Variable | Purpose |
 |----------|---------|
 | `hermes_start_agents` | Start gateway after deploy (default `true`) |
-| `lmstudio_model` / `lmstudio_model_linux` | GGUF model key (default `google/gemma-4-12b@q4_k_m`) |
+| `lmstudio_model` / `lmstudio_model_linux` | GGUF model key (default `google/gemma-4-12b-qat`) |
 | `lmstudio_base_url` | LM Studio API URL (default `http://127.0.0.1:1234/v1`) |
 | `lmstudio_download_model` / `lmstudio_load_model` | Auto get/load during deploy (default `true`) |
 | `lmstudio_model_download_url` | Hugging Face repo for `lms get --gguf` |

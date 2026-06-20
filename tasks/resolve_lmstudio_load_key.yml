@@ -67,7 +67,7 @@
       LM Studio cannot load a bare filename — it needs the full path or catalog key from `lms ls`.
       Run: lms ls
       Then set lmstudio_model in vars.yml to the exact key shown (often a full path ending in
-      gemma-4-12B-it-Q4_K_M.gguf), or use the staff pick if listed: google/gemma-4-12b@q4_k_m
+      gemma-4-12B-it-QAT.gguf), or use the staff pick if listed: google/gemma-4-12b-qat
       GGUF paths on disk (MLX filtered): {{ lms_disk_model_paths | default([]) | join(', ') | default('(none)') }}
   when:
     - lmstudio_effective_model | default('') | lower is search('\\.gguf$')
