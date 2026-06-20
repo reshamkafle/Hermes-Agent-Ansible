@@ -1,6 +1,6 @@
 {% set ctx = hermes_model_context_length | default(65536) | int %}
 model:
-  default: "{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
+  default: "{{ lmstudio_hermes_model | default(lmstudio_runtime_model | default(lmstudio_effective_model)) }}"
   provider: "{{ hermes_model_provider | default('custom') }}"
   base_url: "{{ lmstudio_base_url }}"
   api_key: "{{ hermes_model_api_key | default('lm-studio', true) }}"

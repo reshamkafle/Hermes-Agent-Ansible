@@ -8,12 +8,6 @@
 - name: Derive LM Studio model slug variants from vars.yml
   set_fact:
     lmstudio_model_slug: "{{ lmstudio_model_base_id.split('/')[-1] | lower }}"
-    lmstudio_model_quant_tag: >-
-      {{
-        (lmstudio_effective_model.split('@')[1] | lower)
-        if ('@' in (lmstudio_effective_model | default('')))
-        else ''
-      }}
     lmstudio_model_slug_no_quant: >-
       {{
         (lmstudio_model_base_id.split('/')[-1] | lower)

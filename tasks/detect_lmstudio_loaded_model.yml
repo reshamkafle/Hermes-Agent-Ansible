@@ -173,7 +173,14 @@
       {%- endfor -%}
       {%- for api_id in lms_api_model_ids | default([]) -%}
         {%- set val_l = (api_id | string | lower) -%}
-        {%- if required and (val_l == required or required in val_l or val_l in required) -%}
+        {%- set val_base = val_l.split('/')[-1] -%}
+        {%- set wanted_base = required.split('/')[-1] if required else '' -%}
+        {%- if required and (
+          val_l == required
+          or required in val_l
+          or val_l in required
+          or (wanted_base and val_base == wanted_base)
+        ) -%}
           {%- set _ = vals.append('api:' ~ (api_id | string)) -%}
         {%- endif -%}
       {%- endfor -%}

@@ -18,6 +18,24 @@
     - name: Resolve LM Studio model from vars file
       import_tasks: tasks/resolve_lmstudio_model.yml
 
+    - name: Resolve LM Studio CLI path and PATH prefix
+      import_tasks: tasks/resolve_lmstudio_cli.yml
+
+    - name: Define LM Studio CLI environment (smoke test config validation)
+      import_tasks: tasks/lmstudio_cli_environment.yml
+
+    - name: Build LM Studio model match needles (smoke test)
+      include_tasks: tasks/build_lmstudio_match_needles.yml
+
+    - name: List LM Studio models on disk (for Hermes model id resolution)
+      include_tasks: tasks/lmstudio_check_disk_once.yml
+
+    - name: Resolve LM Studio load key for Hermes model.default
+      include_tasks: tasks/resolve_lmstudio_load_key.yml
+
+    - name: Resolve Hermes model.default from LM Studio API
+      include_tasks: tasks/resolve_lmstudio_hermes_model.yml
+
     - name: Validate credentials required for digest skills
       vars:
         hermes_telegram_recipient_ids: >-
@@ -110,14 +128,14 @@
       assert:
         that:
           - hermes_model_section.base_url | default('') == lmstudio_base_url
-          - hermes_model_section.default | default('') == lmstudio_effective_model
+          - hermes_model_section.default | default('') == (lmstudio_hermes_model | default(lmstudio_runtime_model | default(lmstudio_effective_model)))
           - hermes_model_ctx >= 64000
           - hermes_model_ctx == (hermes_model_context_length | default(65536) | int)
           - hermes_compression_ctx >= 64000
         fail_msg: >-
           {{ hermes_config_path }} was not synced from vars.yml.
           Hermes must use LM Studio at {{ lmstudio_base_url }} with model
-          {{ lmstudio_effective_model }} and
+          {{ lmstudio_hermes_model | default(lmstudio_runtime_model | default(lmstudio_effective_model)) }} and
           context_length >= 64000 (hermes_model_context_length in vars.yml).
           Parsed model section: {{ hermes_model_section | to_nice_json }}.
           Parsed compression section: {{ hermes_compression_section | to_nice_json }}.

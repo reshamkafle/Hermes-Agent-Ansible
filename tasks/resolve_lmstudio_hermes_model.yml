@@ -1,0 +1,58 @@
+---
+# Pick the model ID Hermes should send to LM Studio chat completions.
+# Prefers GET /v1/models id when it matches vars.yml (or resolved disk path); else disk/load key.
+# Requires: lmstudio_effective_model, lmstudio_runtime_model, lmstudio_base_url
+# Optional: hermes_model_api_key
+# Sets: lmstudio_hermes_model
+
+- name: Query LM Studio OpenAI-compatible models endpoint (Hermes model id)
+  uri:
+    url: "{{ lmstudio_base_url | regex_replace('/?$', '') }}/models"
+    method: GET
+    status_code: 200
+    headers: "{{ {'Authorization': 'Bearer ' + (hermes_model_api_key | default('lm-studio', true)) } if (hermes_model_api_key | default('') | trim | length > 0) else omit }}"
+  register: lms_hermes_api_models
+  failed_when: false
+
+- name: Resolve Hermes model.default from LM Studio API listing
+  set_fact:
+    lmstudio_hermes_model: >-
+      {%- set wanted = lmstudio_effective_model | default('') | string | trim -%}
+      {%- set wanted_l = wanted | lower -%}
+      {%- set runtime = lmstudio_runtime_model | default(wanted) | string | trim -%}
+      {%- set runtime_l = runtime | lower -%}
+      {%- set wanted_base = wanted_l.split('/')[-1] -%}
+      {%- set runtime_base = runtime_l.split('/')[-1] -%}
+      {%- set ids = (
+          lms_hermes_api_models.json.data | default([])
+          | map(attribute='id')
+          | map('string')
+          | list
+        ) if (lms_hermes_api_models.status | default(0) == 200) else [] -%}
+      {%- set ns = namespace(resolved='') -%}
+      {%- for api_id in ids -%}
+        {%- set id_l = api_id | lower -%}
+        {%- set id_base = id_l.split('/')[-1] -%}
+        {%- if id_l == runtime_l or id_l == wanted_l or id_base == wanted_base or id_base == runtime_base -%}
+          {%- set ns.resolved = api_id -%}
+        {%- elif wanted_l and (wanted_l in id_l or id_l in wanted_l) -%}
+          {%- if ns.resolved | length == 0 -%}
+            {%- set ns.resolved = api_id -%}
+          {%- endif -%}
+        {%- elif runtime_l and (runtime_l in id_l or id_l in runtime_l) -%}
+          {%- if ns.resolved | length == 0 -%}
+            {%- set ns.resolved = api_id -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.resolved if (ns.resolved | length > 0) else (runtime if (runtime | length > 0) else wanted) }}
+
+- name: Show resolved Hermes model.default
+  debug:
+    msg: >-
+      vars.yml={{ lmstudio_effective_model }} |
+      disk/load key={{ lmstudio_runtime_model | default(lmstudio_effective_model) }} |
+      Hermes model.default={{ lmstudio_hermes_model }}
+      {% if lmstudio_hermes_model != (lmstudio_runtime_model | default(lmstudio_effective_model)) %}
+      (from LM Studio /v1/models)
+      {% endif %}

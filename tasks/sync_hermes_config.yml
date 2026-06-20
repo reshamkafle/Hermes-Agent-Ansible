@@ -2,7 +2,7 @@
 # Deploy Hermes config.yaml, .env secrets, and hermes-run.sh wrapper.
 # Requires: hermes_path_prefix, ansible_facts['os_family']
 # Optional: target_user (for Debian become), hermes_cmd (for CLI config apply)
-# Sets (via resolve): lmstudio_effective_model, lmstudio_runtime_model
+# Sets (via resolve): lmstudio_effective_model, lmstudio_runtime_model, lmstudio_hermes_model
 
 - name: Establish Hermes deployment paths
   import_tasks: establish_target_home.yml
@@ -44,6 +44,9 @@
 - name: Resolve LM Studio load key for Hermes model.default
   include_tasks: resolve_lmstudio_load_key.yml
 
+- name: Resolve Hermes model.default from LM Studio API (when server is up)
+  include_tasks: resolve_lmstudio_hermes_model.yml
+
 - name: Ensure Hermes home directory exists before config write
   file:
     path: "{{ hermes_home_dir }}"
@@ -82,13 +85,19 @@
   shell: |
     set -euo pipefail
     H="{{ hermes_cmd }}"
-    "$H" config set model.default "{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
+    "$H" config set model.default "{{ lmstudio_hermes_model | default(lmstudio_runtime_model | default(lmstudio_effective_model)) }}"
     "$H" config set model.provider "{{ hermes_model_provider | default('custom') }}"
     "$H" config set model.base_url "{{ lmstudio_base_url }}"
     "$H" config set model.api_key "{{ hermes_model_api_key | default('lm-studio', true) }}"
     "$H" config set model.context_length "{{ hermes_model_context_length | default(65536) }}"
     "$H" config set auxiliary.compression.provider "main"
     "$H" config set auxiliary.compression.context_length "{{ hermes_model_context_length | default(65536) }}"
+    "$H" config set auxiliary.web_extract.provider "main"
+    "$H" config set auxiliary.web_extract.context_length "{{ hermes_model_context_length | default(65536) }}"
+    "$H" config set auxiliary.session_search.provider "main"
+    "$H" config set auxiliary.session_search.context_length "{{ hermes_model_context_length | default(65536) }}"
+    "$H" config set auxiliary.vision.provider "main"
+    "$H" config set auxiliary.vision.context_length "{{ hermes_model_context_length | default(65536) }}"
   args:
     executable: /bin/bash
   environment:
@@ -130,7 +139,7 @@
     hermes_model_ctx: "{{ hermes_model_section.context_length | default(0) | int }}"
     hermes_compression_ctx: "{{ hermes_compression_section.context_length | default(0) | int }}"
     hermes_expected_ctx: "{{ hermes_model_context_length | default(65536) | int }}"
-    hermes_expected_model: "{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
+    hermes_expected_model: "{{ lmstudio_hermes_model | default(lmstudio_runtime_model | default(lmstudio_effective_model)) }}"
     hermes_expected_base_url: "{{ lmstudio_base_url }}"
   assert:
     that:
