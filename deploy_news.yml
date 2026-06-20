@@ -3,10 +3,11 @@
   hosts: all
   gather_facts: true
   become: false
-  vars_files:
-    - vars.yml
 
   tasks:
+    - name: Load deployment variables from vars.yml or vars.yaml
+      import_tasks: tasks/load_hermes_vars.yml
+
     # Set workspace and home directory variables dynamically across hosts
     - name: Establish operational workspace path variables
       import_tasks: tasks/establish_target_home.yml

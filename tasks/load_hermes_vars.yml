@@ -1,0 +1,46 @@
+---
+# Load deployment secrets and LM Studio settings from vars.yml or vars.yaml.
+# Sets: hermes_vars_path
+# Loads: all keys from the vars file (lmstudio_model, lmstudio_model_linux, etc.)
+
+- name: Check for vars.yml beside playbook
+  stat:
+    path: "{{ playbook_dir }}/vars.yml"
+  register: hermes_vars_yml_stat
+
+- name: Check for vars.yaml beside playbook
+  stat:
+    path: "{{ playbook_dir }}/vars.yaml"
+  register: hermes_vars_yaml_stat
+
+- name: Resolve Hermes vars file path
+  set_fact:
+    hermes_vars_path: >-
+      {{
+        playbook_dir ~ '/vars.yml'
+        if (hermes_vars_yml_stat.stat.exists | default(false) | bool)
+        else (
+          playbook_dir ~ '/vars.yaml'
+          if (hermes_vars_yaml_stat.stat.exists | default(false) | bool)
+          else ''
+        )
+      }}
+
+- name: Require vars.yml or vars.yaml beside playbook
+  fail:
+    msg: >-
+      No vars.yml or vars.yaml found in {{ playbook_dir }}.
+      Copy vars.example..yml to vars.yml and set lmstudio_model
+      (e.g. google/gemma-4-12b@q4_k_m).
+  when: hermes_vars_path | default('') | trim | length == 0
+
+- name: Load Hermes deployment variables from vars file
+  include_vars:
+    file: "{{ hermes_vars_path }}"
+
+- name: Show loaded LM Studio model from vars file
+  debug:
+    msg: >-
+      vars file={{ hermes_vars_path }} |
+      lmstudio_model={{ lmstudio_model | default('(unset)') }} |
+      lmstudio_model_linux={{ lmstudio_model_linux | default('(unset)') }}

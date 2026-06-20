@@ -107,7 +107,27 @@
 - name: Test whether an LM Studio disk path/key matches the configured model
   set_fact:
     lmstudio_key_matches_config: >-
-      {%- set key_norm = (item | string | lower | regex_replace('.*/', '')) -%}
+      {%- set kl = (item | string | lower) -%}
+      {%- set required = (lmstudio_effective_model | default('') | string | lower) -%}
+      {%- set quant = (lmstudio_model_quant_tag | default('') | string | lower) -%}
+      {%- set quant_norm = quant | regex_replace('[-_]', '') -%}
+      {%- set base = (lmstudio_model_base_id | default('') | string | lower) -%}
+      {%- set slug = (lmstudio_model_slug | default('') | string | lower) -%}
+      {%- set strict = lmstudio_strict_model_key | default(false) | bool -%}
+      {%- if '-mlx' in kl or '/mlx' in kl or '[mlx]' in kl or '_mlx' in kl -%}
+      {{ false }}
+      {%- elif strict and required -%}
+      {{
+        (kl == required)
+        or (kl | regex_replace('[-_]', '') == required | regex_replace('[-_]', ''))
+        or (
+          quant
+          and (quant in kl or quant_norm in (kl | regex_replace('[-_]', '')))
+          and (base in kl or slug in kl)
+        )
+      }}
+      {%- else -%}
+      {%- set key_norm = (kl | regex_replace('.*/', '')) -%}
       {%- set needles = lmstudio_match_needles | default([]) -%}
       {%- set ns = namespace(found=false) -%}
       {%- for n in needles -%}
@@ -116,13 +136,14 @@
           key_norm == n_norm
           or n_norm in key_norm
           or key_norm in n_norm
-          or (item | string | lower) == n_norm
-          or n_norm in (item | string | lower)
+          or kl == n_norm
+          or n_norm in kl
         ) -%}
           {%- set ns.found = true -%}
         {%- endif -%}
       {%- endfor -%}
       {{ ns.found }}
+      {%- endif -%}
   loop: "{{ lms_disk_model_keys | default([]) }}"
   loop_control:
     label: "{{ item }}"
@@ -180,61 +201,65 @@
   set_fact:
     lmstudio_load_candidates: >-
       {{
-        (
-          (lmstudio_matched_paths | default([]))
-          + (
-            [lmstudio_log_load_key, lmstudio_log_disk_hint]
-            if (lmstudio_log_confirms_download | default(false) | bool)
-            else []
+        [lmstudio_effective_model]
+        if (lmstudio_strict_model_key | default(false) | bool)
+        else (
+          (
+            (lmstudio_matched_paths | default([]))
+            + (
+              [lmstudio_log_load_key, lmstudio_log_disk_hint]
+              if (lmstudio_log_confirms_download | default(false) | bool)
+              else []
+            )
+            + [lmstudio_model_slug_no_quant, lmstudio_model_slug, lmstudio_model_base_id]
           )
-          + (
-            [lmstudio_model_slug_no_quant, lmstudio_model_slug, lmstudio_model_base_id]
-            if not (lmstudio_prefers_gguf | default(false) | bool)
-            else []
-          )
+          | map('string')
+          | map('trim')
+          | reject('equalto', '')
+          | list
+          | unique
+          | list
         )
-        | map('string')
-        | map('trim')
-        | reject('equalto', '')
-        | list
-        | unique
-        | list
       }}
     lmstudio_disk_model_key: >-
       {{
-        lmstudio_matched_paths | first
-        if (lmstudio_matched_paths | default([]) | length > 0)
+        lmstudio_effective_model
+        if (lmstudio_strict_model_key | default(false) | bool)
         else (
-          lmstudio_matched_keys | first
-          if (lmstudio_matched_keys | default([]) | length > 0)
+          lmstudio_matched_paths | first
+          if (lmstudio_matched_paths | default([]) | length > 0)
           else (
-            lms_disk_model_paths | first
-            if (
-              (lmstudio_log_confirms_download | default(false) | bool)
-              and (lms_disk_model_paths | default([]) | length > 0)
-            )
+            lmstudio_matched_keys | first
+            if (lmstudio_matched_keys | default([]) | length > 0)
             else (
-              lmstudio_log_load_key
+              lms_disk_model_paths | first
               if (
-                (lmstudio_log_load_key | default('') | trim | length > 0)
-                and (lmstudio_log_confirms_download | default(false) | bool)
+                (lmstudio_log_confirms_download | default(false) | bool)
+                and (lms_disk_model_paths | default([]) | length > 0)
               )
               else (
-                lmstudio_log_disk_hint
+                lmstudio_log_load_key
                 if (
-                  (lmstudio_log_disk_hint | default('') | trim | length > 0)
+                  (lmstudio_log_load_key | default('') | trim | length > 0)
                   and (lmstudio_log_confirms_download | default(false) | bool)
                 )
                 else (
-                  lmstudio_effective_model
+                  lmstudio_log_disk_hint
                   if (
-                    (lmstudio_prefers_gguf | default(false) | bool)
-                    and (lmstudio_effective_model | default('') | trim | length > 0)
+                    (lmstudio_log_disk_hint | default('') | trim | length > 0)
+                    and (lmstudio_log_confirms_download | default(false) | bool)
                   )
                   else (
-                    lmstudio_model_slug_no_quant
-                    if (lmstudio_model_slug_no_quant | default('') | trim | length > 0)
-                    else lmstudio_model_base_id
+                    lmstudio_effective_model
+                    if (
+                      (lmstudio_prefers_gguf | default(false) | bool)
+                      and (lmstudio_effective_model | default('') | trim | length > 0)
+                    )
+                    else (
+                      lmstudio_model_slug_no_quant
+                      if (lmstudio_model_slug_no_quant | default('') | trim | length > 0)
+                      else lmstudio_model_base_id
+                    )
                   )
                 )
               )
@@ -245,6 +270,23 @@
     lmstudio_model_on_disk: >-
       {{
         (lmstudio_matched_keys | default([]) | length > 0)
+        or (
+          (lmstudio_strict_model_key | default(false) | bool)
+          and (
+            (lmstudio_effective_model | lower) in (lms_disk_model_keys | default([]) | map('lower') | list)
+            or (
+              (lmstudio_model_quant_tag | default('') | length > 0)
+              and (
+                lms_disk_model_keys | default([])
+                | map('string')
+                | map('lower')
+                | select('search', lmstudio_model_quant_tag | lower)
+                | list
+                | length > 0
+              )
+            )
+          )
+        )
         or (
           (lmstudio_log_confirms_download | default(false) | bool)
           and not (

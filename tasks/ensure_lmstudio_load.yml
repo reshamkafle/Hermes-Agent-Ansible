@@ -66,11 +66,20 @@
       Configured model: {{ lmstudio_effective_model }}.
   when: lmstudio_skip_load_due_to_memory | default(false) | bool
 
+- name: Build ordered LM Studio load candidate list (strict staff pick key)
+  set_fact:
+    lmstudio_load_attempts:
+      - "{{ lmstudio_effective_model }}"
+  when:
+    - lmstudio_strict_model_key | default(false) | bool
+    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
+
 - name: Build ordered LM Studio load candidate list (GGUF — vars.yml key only)
   set_fact:
     lmstudio_load_attempts:
       - "{{ lmstudio_effective_model }}"
   when:
+    - not (lmstudio_strict_model_key | default(false) | bool)
     - lmstudio_prefers_gguf | default(false) | bool
     - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
 
@@ -95,6 +104,7 @@
         | list
       }}
   when:
+    - not (lmstudio_strict_model_key | default(false) | bool)
     - not (lmstudio_prefers_gguf | default(false) | bool)
     - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
 
@@ -103,6 +113,7 @@
   vars:
     lmstudio_keys_to_filter: "{{ lmstudio_load_attempts_raw | default([]) }}"
   when:
+    - not (lmstudio_strict_model_key | default(false) | bool)
     - not (lmstudio_prefers_gguf | default(false) | bool)
     - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
     - lmstudio_load_attempts_raw is defined
@@ -111,6 +122,7 @@
   set_fact:
     lmstudio_load_attempts: "{{ lmstudio_filtered_keys | default(lmstudio_load_attempts_raw | default([])) }}"
   when:
+    - not (lmstudio_strict_model_key | default(false) | bool)
     - not (lmstudio_prefers_gguf | default(false) | bool)
     - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
     - lmstudio_load_attempts is not defined

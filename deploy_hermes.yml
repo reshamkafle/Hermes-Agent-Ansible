@@ -3,10 +3,11 @@
   hosts: all
   gather_facts: true
   become: false
-  vars_files:
-    - vars.yml
 
   tasks:
+    - name: Load deployment variables from vars.yml or vars.yaml
+      import_tasks: tasks/load_hermes_vars.yml
+
     - name: Establish deployment path variables
       import_tasks: tasks/establish_target_home.yml
 
@@ -17,7 +18,7 @@
     - name: Resolve LM Studio CLI path and PATH prefix
       import_tasks: tasks/resolve_lmstudio_cli.yml
 
-    - name: Resolve LM Studio model from vars.yml
+    - name: Resolve LM Studio model from vars file
       import_tasks: tasks/resolve_lmstudio_model.yml
 
     - name: Detect and validate operating system family

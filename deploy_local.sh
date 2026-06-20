@@ -41,7 +41,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 INVENTORY="localhost,"
-START_HERMES_AGENTS="$("$SCRIPT_DIR/scripts/read_hermes_start_agents.sh" vars.yml)"
+if [[ -f "vars.yml" ]]; then
+  VARS_FILE="vars.yml"
+elif [[ -f "vars.yaml" ]]; then
+  VARS_FILE="vars.yaml"
+else
+  echo "Error: vars.yml or vars.yaml not found. Copy vars.example..yml to vars.yml and fill in your secrets."
+  exit 1
+fi
+
+LMSTUDIO_MODEL="$("$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model "$VARS_FILE")"
+LMSTUDIO_MODEL_LINUX="$("$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model_linux "$VARS_FILE")"
+LMSTUDIO_DOWNLOAD_URL="$("$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model_download_url "$VARS_FILE")"
+HERMES_CTX="$("$SCRIPT_DIR/scripts/read_yaml_value.sh" hermes_model_context_length "$VARS_FILE")"
+HERMES_CTX="${HERMES_CTX:-65536}"
+if [[ "$(uname -s)" == "Linux" ]]; then
+  LMSTUDIO_EFFECTIVE_MODEL="$LMSTUDIO_MODEL_LINUX"
+else
+  LMSTUDIO_EFFECTIVE_MODEL="$LMSTUDIO_MODEL"
+fi
+
+START_HERMES_AGENTS="$("$SCRIPT_DIR/scripts/read_hermes_start_agents.sh" "$VARS_FILE")"
 
 EXTRA_PLAYBOOK_ARGS=(
   -i "$INVENTORY"
@@ -64,10 +84,6 @@ PLAYBOOKS=(
   "deploy_digest.yml"
 )
 
-if [[ ! -f "vars.yml" ]]; then
-  echo "Error: vars.yml not found. Copy vars.example..yml to vars.yml and fill in your secrets."
-  exit 1
-fi
 
 if ! command -v ansible-playbook >/dev/null 2>&1; then
   echo "Error: ansible-playbook is not installed."
@@ -103,9 +119,17 @@ for playbook in "${PLAYBOOKS[@]}"; do
     else
       echo "If model download failed, try manually:"
       echo "  source \"${HOME}/.hermes/bin/lmstudio-path.sh\""
-      echo "  lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF --gguf --yes"
+      if [[ -n "$LMSTUDIO_DOWNLOAD_URL" ]]; then
+        echo "  lms get ${LMSTUDIO_DOWNLOAD_URL} --gguf --yes"
+      else
+        echo "  lms get <lmstudio_model_download_url from ${VARS_FILE}> --gguf --yes"
+      fi
       echo "If model load failed or hung, try:"
-      echo "  $LMS_CMD load google/gemma-4-12b@q4_k_m --context-length $(grep -E '^\s*hermes_model_context_length:' vars.yml 2>/dev/null | sed -E 's/.*:\s*//' | tr -d ' ' || echo 65536) --yes"
+      if [[ -n "$LMSTUDIO_EFFECTIVE_MODEL" ]]; then
+        echo "  $LMS_CMD load ${LMSTUDIO_EFFECTIVE_MODEL} --context-length ${HERMES_CTX} --yes"
+      else
+        echo "  $LMS_CMD load <lmstudio_model from ${VARS_FILE}> --context-length ${HERMES_CTX} --yes"
+      fi
       echo "  $LMS_CMD ps"
       if [[ "$LMS_CMD" == "lms" ]]; then
         echo "If you see 'command not found', run:"

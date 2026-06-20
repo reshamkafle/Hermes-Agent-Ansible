@@ -1,8 +1,10 @@
 ---
-# Resolve lmstudio_effective_model from vars.yml (no hardcoded model IDs).
+# Resolve lmstudio_effective_model from vars.yml / vars.yaml (via load_hermes_vars.yml).
+# Never hardcode model IDs here — only read lmstudio_model / lmstudio_model_linux from the vars file.
 # Requires: ansible_facts['os_family']
 # Sets: lmstudio_effective_model, lmstudio_model_base_id, lmstudio_model_download_target,
-#       lmstudio_get_cli_flags, lmstudio_runtime_model, lmstudio_prefers_gguf
+#       lmstudio_get_cli_flags, lmstudio_runtime_model, lmstudio_prefers_gguf,
+#       lmstudio_model_quant_tag, lmstudio_strict_model_key
 
 - name: Require LM Studio model in vars.yml (Linux)
   fail:
@@ -26,6 +28,14 @@
       {{ (lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model).split('@')[0] }}
     lmstudio_runtime_model: >-
       {{ lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model }}
+    lmstudio_model_quant_tag: >-
+      {{
+        (lmstudio_runtime_model.split('@')[1] | lower)
+        if ('@' in (lmstudio_runtime_model | default('')))
+        else ''
+      }}
+    lmstudio_strict_model_key: >-
+      {{ ('@' in (lmstudio_runtime_model | default(''))) | bool }}
 
 # Set lmstudio_model_download_url to a full https://huggingface.co/... URL for `lms get`.
 # Passing org/repo or staff picks alone can hit LM Studio's artifact resolver and mis-resolve.
@@ -64,6 +74,16 @@
         )
         else '--mlx --yes'
       }}
+
+- name: Require GGUF staff pick with quant tag in vars.yml
+  fail:
+    msg: >-
+      lmstudio_model must include a quant tag for GGUF (e.g. org/model@q4_k_m).
+      Set lmstudio_model / lmstudio_model_linux in {{ hermes_vars_path | default('vars.yml') }}.
+      Bare staff picks without @quant match MLX variants and are rejected.
+  when:
+    - lmstudio_prefers_gguf | default(false) | bool
+    - not (lmstudio_strict_model_key | default(false) | bool)
 
 - name: Show LM Studio model download plan
   debug:

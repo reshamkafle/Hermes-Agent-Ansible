@@ -5,21 +5,8 @@
   gather_facts: true
 
   tasks:
-    - name: Require vars.yml beside this playbook
-      stat:
-        path: "{{ playbook_dir }}/vars.yml"
-      register: hermes_vars_file
-
-    - name: Fail when vars.yml is missing
-      fail:
-        msg: >-
-          {{ playbook_dir }}/vars.yml not found. Copy vars.example..yml to
-          vars.yml and set lmstudio_base_url, lmstudio_model, and related settings.
-      when: not hermes_vars_file.stat.exists
-
-    - name: Load deployment variables from vars.yml
-      include_vars:
-        file: "{{ playbook_dir }}/vars.yml"
+    - name: Load deployment variables from vars.yml or vars.yaml
+      import_tasks: tasks/load_hermes_vars.yml
 
     - name: Establish workspace path variables
       import_tasks: tasks/establish_target_home.yml
@@ -28,8 +15,8 @@
       set_fact:
         target_user: "{{ ansible_facts['env']['USER'] | default(ansible_user_id) }}"
 
-- name: Resolve LM Studio model from vars.yml
-  import_tasks: tasks/resolve_lmstudio_model.yml
+    - name: Resolve LM Studio model from vars file
+      import_tasks: tasks/resolve_lmstudio_model.yml
 
     - name: Check Hermes home directory exists
       stat:
