@@ -1,5 +1,5 @@
 ---
-- name: Deploy Hermes Daily Morning Digest (News + Investment HTML)
+- name: Deploy Hermes Daily Morning Digest (News + Investment Telegram HTML)
   hosts: all
   gather_facts: true
   become: false
@@ -53,25 +53,34 @@
         content: |
           ---
           name: daily-morning-digest
-          description: Combines tech news and investment reports into a Bootstrap HTML briefing for telegram_send_users.
+          description: Combines tech news and investment reports into a Telegram HTML briefing for telegram_send_users.
           version: 1.0.0
           ---
 
           ## Objectives
-          You are a Daily Briefing Publisher. Every morning at 6 AM, merge the latest IT/AI news digest and investment analytics into one polished Bootstrap HTML report and deliver it to the recipients configured in `TELEGRAM_SEND_USERS`.
+          You are a Daily Briefing Publisher. Every morning at 6 AM, merge the latest IT/AI news digest and investment analytics into one Telegram HTML message for the recipients configured in `TELEGRAM_SEND_USERS`.
 
           ## Operational Procedure
           1. Read the cached tech news report from `{{ target_home }}/.hermes/workspace/tech_news_report.md`.
           2. Read the cached investment report from `{{ target_home }}/.hermes/workspace/investment/report.md`.
           3. If either file is missing or empty, run the corresponding skill first (`tech-news-intelligence` or `stock-investment-tracker`), then re-read the file.
-          4. Build a complete HTML5 document using Bootstrap 5 with this CDN in the `<head>`:
-             `https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css`
-             Structure the page with:
-             - A hero header card titled **Hermes Daily Briefing** with today's date
-             - A **Tech & AI Intelligence** section (convert news markdown to semantic HTML inside a Bootstrap card)
-             - An **Investment Tracker** section (convert investment markdown tables to `<table class="table table-striped table-hover">`)
-             - Responsive layout using `container`, `row`, `col`, `card`, `card-header`, and `card-body`
-          5. Save the final HTML to `{{ target_home }}/.hermes/workspace/digest/daily_digest.html`.
+          4. Build a **Telegram HTML message fragment** (not a full HTML5 document). Use **only** tags supported by the Telegram Bot API `parse_mode=HTML`:
+             - `<b>` or `<strong>` — bold section headings
+             - `<i>` or `<em>` — emphasis
+             - `<u>` or `<ins>` — underline
+             - `<s>`, `<strike>`, or `<del>` — strikethrough
+             - `<a href="URL">text</a>` — links
+             - `<code>` — inline code
+             - `<pre>` — preformatted blocks (use for investment tables and multi-line data)
+             - `<blockquote>` — quoted excerpts
+             - `<tg-spoiler>` or `<span class="tg-spoiler">` — spoilers (optional)
+             Do **not** use `<!DOCTYPE>`, `<html>`, `<head>`, `<body>`, `<div>`, `<p>`, `<br>`, `<hr>`, `<h1>`–`<h6>`, `<table>`, `<tr>`, `<td>`, Bootstrap, CSS, or CDN links.
+             Escape literal `<`, `>`, and `&` in source text as `&lt;`, `&gt;`, and `&amp;`.
+             Structure the message with blank lines (newline characters) between sections:
+             - `<b>Hermes Daily Briefing</b>` with today's date on the next line
+             - `<b>Tech &amp; AI Intelligence</b>` — convert news markdown to Telegram HTML (bold headlines, linked sources, blockquotes for key quotes)
+             - `<b>Investment Tracker</b>` — reformat investment markdown tables as fixed-width text inside a `<pre>` block
+          5. Save the final Telegram HTML to `{{ target_home }}/.hermes/workspace/digest/daily_digest.html`.
           6. Do **not** call `send_message` or attempt Telegram delivery. The deployment runner (`hermes-daily-digest.sh`) sends the saved HTML to `TELEGRAM_SEND_USERS` after this skill completes.
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
@@ -88,7 +97,7 @@
 
     - name: Configure 6 AM Daily Digest Cron Automation (Linux / WSL2)
       cron:
-        name: "Run Daily Morning Hermes Digest (News + Investment HTML)"
+        name: "Run Daily Morning Hermes Digest (News + Investment Telegram HTML)"
         minute: "0"
         hour: "6"
         user: "{{ hermes_user }}"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
 # Smoke test: run the Hermes daily-morning-digest skill (news + investment
-# combined) and verify the Bootstrap HTML digest is produced. Hermes sends the
+# combined) and verify the Telegram HTML digest is produced. Hermes sends the
 # digest to Telegram recipients configured in vars.yml (TELEGRAM_SEND_USERS).
 #
 # Uses the same hermes-daily-digest.sh wrapper as the 6 AM LaunchAgent / cron job
-# (runs the skill, then delivers HTML via hermes send — chat -Q alone does not).
+# (runs the skill, then delivers Telegram HTML via hermes send — chat -Q alone does not).
 # Does not install Hermes or touch remote hosts.
 #
 # Prerequisites:

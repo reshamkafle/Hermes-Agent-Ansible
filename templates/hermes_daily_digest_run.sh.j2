@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run daily-morning-digest, then deliver HTML to Telegram via hermes send.
+# Run daily-morning-digest, then deliver Telegram HTML to recipients via hermes send.
 # chat -Q does not auto-deliver; MEDIA: tags only work with hermes cron delivery.
 set -euo pipefail
 export HOME="{{ target_home }}"
@@ -19,7 +19,7 @@ DIGEST_HTML="${HERMES_HOME}/workspace/digest/daily_digest.html"
 "${HERMES_BIN}" chat -Q -q 'Run the daily-morning-digest skill according to its instructions.' --skills daily-morning-digest --yolo
 
 if [[ ! -s "${DIGEST_HTML}" ]]; then
-  echo "error: digest HTML missing or empty at ${DIGEST_HTML}" >&2
+  echo "error: digest Telegram HTML missing or empty at ${DIGEST_HTML}" >&2
   exit 1
 fi
 
@@ -61,7 +61,6 @@ while [[ $i -lt $recipient_count ]]; do
   rid="${recipients[$i]}"
   echo "==> Delivering digest to telegram:${rid}"
   "${HERMES_BIN}" send --to "telegram:${rid}" \
-    --subject "Hermes Daily Briefing — full HTML report attached" \
     --file "${DIGEST_HTML}" \
     -q
   delivered=$((delivered + 1))
