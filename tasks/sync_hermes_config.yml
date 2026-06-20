@@ -7,6 +7,9 @@
 - name: Establish Hermes deployment paths
   import_tasks: establish_target_home.yml
 
+- name: Resolve LM Studio CLI path and PATH prefix
+  import_tasks: resolve_lmstudio_cli.yml
+
 - name: Stop Hermes gateway before rewriting config.yaml (macOS)
   shell: |
     set -euo pipefail
