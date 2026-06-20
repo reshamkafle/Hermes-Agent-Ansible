@@ -1,0 +1,142 @@
+---
+# Detect whether the configured LM Studio model is already loaded in memory.
+# Requires: lmstudio_lms_cmd, lmstudio_cli_env, lmstudio_match_needles, lmstudio_effective_model,
+#           lmstudio_model_slug, lmstudio_model_slug_no_quant, lmstudio_base_url
+# Optional: lmstudio_model_quant_tag, lmstudio_prefers_gguf
+# Sets: lmstudio_model_already_loaded, lmstudio_loaded_detection_source, lms_ps_json, lms_api_models
+
+- name: List LM Studio models loaded in memory (CLI)
+  command: "{{ lmstudio_lms_cmd }} ps --json"
+  environment: "{{ lmstudio_cli_env }}"
+  register: lms_ps_json
+  changed_when: false
+  failed_when: false
+  become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+  become_user: "{{ target_user if (ansible_facts['os_family'] == 'Debian') else omit }}"
+
+- name: Query LM Studio OpenAI-compatible models endpoint
+  uri:
+    url: "{{ lmstudio_base_url | regex_replace('/?$', '') }}/models"
+    method: GET
+    status_code: 200
+    headers: "{{ {'Authorization': 'Bearer ' + (hermes_model_api_key | default('lm-studio', true)) } if (hermes_model_api_key | default('') | trim | length > 0) else omit }}"
+  register: lms_api_models
+  failed_when: false
+
+- name: Normalize LM Studio ps --json entries
+  set_fact:
+    lms_ps_models: >-
+      {%- set out = [] -%}
+      {%- if lms_ps_json.rc | default(1) == 0 -%}
+        {%- set raw = lms_ps_json.stdout | default('[]') | trim -%}
+        {%- if raw | length > 0 -%}
+          {%- if raw[0] == '[' -%}
+            {%- set out = raw | from_json | default([]) -%}
+          {%- elif raw[0] == '{' -%}
+            {%- set parsed = raw | from_json | default({}) -%}
+            {%- if parsed.models is defined -%}
+              {%- set out = parsed.models | default([]) -%}
+            {%- elif parsed.data is defined -%}
+              {%- set out = parsed.data | default([]) -%}
+            {%- else -%}
+              {%- set out = [parsed] -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endif -%}
+      {{ out }}
+    lms_api_model_ids: >-
+      {{
+        (
+          lms_api_models.json.data | default([])
+          | map(attribute='id')
+          | map('string')
+          | list
+        )
+        if (lms_api_models.status | default(0) == 200)
+        else []
+      }}
+
+- name: Collect loaded-model field values from LM Studio ps listing
+  set_fact:
+    lms_loaded_field_values: >-
+      {%- set vals = [] -%}
+      {%- for m in lms_ps_models | default([]) -%}
+        {%- for field in ['identifier', 'modelKey', 'path', 'indexedModelIdentifier', 'displayName', 'name', 'id'] -%}
+          {%- if m[field] is defined and (m[field] | string | trim | length > 0) -%}
+            {%- set _ = vals.append(m[field] | string) -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {%- for api_id in lms_api_model_ids | default([]) -%}
+        {%- set _ = vals.append(api_id | string) -%}
+      {%- endfor -%}
+      {{ vals | unique | list }}
+
+- name: Detect configured model among loaded LM Studio field values
+  set_fact:
+    lmstudio_model_already_loaded: >-
+      {%- set needles = lmstudio_match_needles | default([]) -%}
+      {%- set slug = lmstudio_model_slug_no_quant | default(lmstudio_model_slug | default('')) | string | lower -%}
+      {%- set quant = lmstudio_model_quant_tag | default('') | string | lower -%}
+      {%- set quant_norm = quant | regex_replace('[-_]', '') -%}
+      {%- set prefers_gguf = lmstudio_prefers_gguf | default(false) | bool -%}
+      {%- set ns = namespace(found=false) -%}
+      {%- for val in lms_loaded_field_values | default([]) -%}
+        {%- if not ns.found -%}
+          {%- set val_l = (val | string | lower | regex_replace(':.*$', '') | regex_replace('\\.gguf$', '')) -%}
+          {%- set val_norm = val_l | regex_replace('[-_]', '') -%}
+          {%- if val_l and not (prefers_gguf and (val_l is search('(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)'))) -%}
+            {%- if prefers_gguf and slug and (val_l is search('(?i)(\\.gguf|q4_k_m|q8_0|gguf)')) and (slug in val_l) -%}
+              {%- set ns.found = true -%}
+            {%- elif prefers_gguf and quant_norm and slug and (quant_norm in val_norm) and (slug in val_l) -%}
+              {%- set ns.found = true -%}
+            {%- else -%}
+              {%- for n in needles -%}
+                {%- set n_l = (n | string | lower | regex_replace(':.*$', '')) -%}
+                {%- if n_l and (n_l == val_l or n_l in val_l or val_l in n_l) -%}
+                  {%- set ns.found = true -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.found }}
+    lmstudio_loaded_detection_source: >-
+      {%- set needles = lmstudio_match_needles | default([]) -%}
+      {%- set slug = lmstudio_model_slug_no_quant | default(lmstudio_model_slug | default('')) | string | lower -%}
+      {%- set quant = lmstudio_model_quant_tag | default('') | string | lower -%}
+      {%- set quant_norm = quant | regex_replace('[-_]', '') -%}
+      {%- set prefers_gguf = lmstudio_prefers_gguf | default(false) | bool -%}
+      {%- set ns = namespace(source='not detected') -%}
+      {%- for val in lms_loaded_field_values | default([]) -%}
+        {%- if ns.source == 'not detected' -%}
+          {%- set val_l = (val | string | lower | regex_replace(':.*$', '') | regex_replace('\\.gguf$', '')) -%}
+          {%- set val_norm = val_l | regex_replace('[-_]', '') -%}
+          {%- if val_l and not (prefers_gguf and (val_l is search('(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)'))) -%}
+            {%- if prefers_gguf and slug and (val_l is search('(?i)(\\.gguf|q4_k_m|q8_0|gguf)')) and (slug in val_l) -%}
+              {%- set ns.source = 'loaded gguf: ' ~ val -%}
+            {%- elif prefers_gguf and quant_norm and slug and (quant_norm in val_norm) and (slug in val_l) -%}
+              {%- set ns.source = 'loaded quant match: ' ~ val -%}
+            {%- else -%}
+              {%- for n in needles -%}
+                {%- set n_l = (n | string | lower | regex_replace(':.*$', '')) -%}
+                {%- if n_l and (n_l == val_l or n_l in val_l or val_l in n_l) -%}
+                  {%- set ns.source = 'needle match: ' ~ val -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.source }}
+
+- name: Show LM Studio loaded-model detection result
+  debug:
+    msg: >-
+      already_loaded={{ lmstudio_model_already_loaded | default(false) }} |
+      source={{ lmstudio_loaded_detection_source | default('unknown') }} |
+      ps rc={{ lms_ps_json.rc | default('?') }} |
+      api status={{ lms_api_models.status | default('?') }} |
+      loaded values={{ lms_loaded_field_values | default([]) | join(', ') }}
