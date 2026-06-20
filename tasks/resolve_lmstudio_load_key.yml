@@ -71,5 +71,5 @@
       GGUF paths on disk (MLX filtered): {{ lms_disk_model_paths | default([]) | join(', ') | default('(none)') }}
   when:
     - lmstudio_effective_model | default('') | lower is search('\\.gguf$')
-    - '/' not in lmstudio_effective_model
+    - "'/' not in lmstudio_effective_model"
     - not (lmstudio_load_key_resolved | default(false) | bool)
