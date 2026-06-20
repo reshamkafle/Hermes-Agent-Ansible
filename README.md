@@ -1,6 +1,6 @@
 # Hermes Agent Ansible
 
-Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on Linux or macOS — locally or over SSH. Installs LM Studio (llmster), configures Hermes (Firecrawl + Telegram), and schedules stock, news, and daily digest skills.
+Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on Linux or macOS — locally or over SSH. Installs LM Studio (llmster), configures Hermes (Firecrawl + Telegram), and schedules stock, gold, news, and daily digest skills.
 
 ## Quick start
 
@@ -142,7 +142,8 @@ Run in this order (`deploy_local.sh` / `deploy_all.sh` do this automatically):
 | `deploy_hermes.yml` | Core: LM Studio, Hermes CLI, config, `.env` |
 | `deploy_investment.yml` | Midnight stock watchlist |
 | `deploy_news.yml` | 5 AM IT/AI news digest |
-| `deploy_digest.yml` | 6 AM combined Telegram HTML briefing |
+| `deploy_gold.yml` | 5:30 AM gold 7-day trend outlook |
+| `deploy_digest.yml` | 6 AM combined Telegram HTML briefing (news + stocks + gold) |
 
 Run `deploy_hermes.yml` first — skill playbooks expect `~/.hermes/` to exist.
 
@@ -175,6 +176,7 @@ The macOS LaunchAgent plist sets `HERMES_HOME`, runs `gateway run --replace` (av
 |-------|------|-------------|
 | Stock tracker | Midnight | `com.hermes.investment.plist` |
 | Tech news | 5 AM | `com.hermes.technews.plist` |
+| Gold trend | 5:30 AM | `com.hermes.gold.plist` |
 | Daily digest | 6 AM | `com.hermes.dailydigest.plist` |
 
 Logs: `~/.hermes/logs/` · macOS gateway: `pgrep -fl "hermes.*gateway run"` and `launchctl print gui/$(id -u)/com.hermes.gateway` (or `user/$(id -u)`) · Linux gateway: `systemctl status hermes-workspace`
@@ -237,7 +239,7 @@ Exit code `0` = all checks passed; `1` = at least one failed. On failure, the pl
 
 ### Daily digest
 
-Runs the full `daily-morning-digest` skill (news + investment → Telegram HTML). Run **after** deploy. First cold run can take **60–120+ minutes** on a local LLM (Firecrawl scrapes + large context).
+Runs the full `daily-morning-digest` skill (news + investment + gold → Telegram HTML). Run **after** deploy. First cold run can take **60–120+ minutes** on a local LLM (Firecrawl scrapes + large context).
 
 ```bash
 chmod +x test_hermes_daily_digest.sh && ./test_hermes_daily_digest.sh
@@ -251,7 +253,7 @@ Needs LM Studio running, `firecrawl_api_key`, and Telegram configured. Default t
 SMOKE_TEST_TIMEOUT=10800 ./test_hermes_daily_digest.sh
 ```
 
-To speed up re-runs, pre-warm the cached reports (run the 5 AM news and midnight investment skills once) so the digest only merges existing markdown.
+To speed up re-runs, pre-warm the cached reports (run the 5 AM news, 5:30 AM gold, and midnight investment skills once) so the digest only merges existing markdown.
 
 ## Run one playbook
 
@@ -284,6 +286,7 @@ Custom inventory: `INVENTORY=hosts.ini ./deploy_all.sh`
 | `hermes_model_api_key` | LM Studio API token when auth is on; use `lm-studio` when auth is off |
 | `hermes_model_context_length` | Context window for Hermes and `lms load --context-length` (default `65536`; Hermes minimum is `64000`) |
 | `tracked_stocks` | Tickers for investment skill |
+| `tracked_gold_instruments` | Gold ETFs and benchmarks for gold trend skill (e.g. GLD, IAU, XAUUSD) |
 | `firecrawl_init_all` / `firecrawl_verify_install` | Firecrawl setup in `~/.hermes/workspace` |
 
 Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.yaml` and `~/.hermes/.env`.
@@ -306,7 +309,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 | `lms: command not found` in your shell | Deploy installs `~/.hermes/bin/lms` on PATH for playbooks; for interactive use run `source ~/.hermes/bin/lmstudio-path.sh` (or `export PATH="$HOME/.hermes/bin:$HOME/.cache/lm-studio/bin:$PATH"`) |
 | `Failed to resolve artifact lmstudio-community/gemma-4-e2b-...` | LM Studio's artifact resolver mis-picked a staff model. Set `lmstudio_model_download_url` to the full Hugging Face repo (e.g. `https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF`). Re-run `./deploy_local.sh` |
 | `lms load` tries MLX models and fails (`gemma4_unified not supported`) | vars.yml targets GGUF (`google/gemma-4-12b@q4_k_m`). Re-run `./deploy_local.sh` — load now tries the vars.yml key first and skips `-mlx` disk keys when `--gguf` is configured. Ensure the GGUF model downloaded: `lms get https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF --gguf --yes` then `lms load google/gemma-4-12b@q4_k_m --context-length 65536 --yes` |
-| Digest smoke test timed out | Default limit is 7200s (2h). Cold runs scrape news + stocks and are slow on local LLM — especially with large `hermes_model_context_length`. Pre-warm `~/.hermes/workspace/tech_news_report.md` and `investment/report.md`, or run `SMOKE_TEST_TIMEOUT=10800 ./test_hermes_daily_digest.sh` |
+| Digest smoke test timed out | Default limit is 7200s (2h). Cold runs scrape news + stocks + gold and are slow on local LLM — especially with large `hermes_model_context_length`. Pre-warm `~/.hermes/workspace/tech_news_report.md`, `investment/report.md`, and `gold/report.md`, or run `SMOKE_TEST_TIMEOUT=10800 ./test_hermes_daily_digest.sh` |
 | Digest smoke test passes but no Telegram message | `hermes chat -Q` does not deliver to Telegram (only stdout). Re-run `./deploy_local.sh` or `deploy_digest.yml` to install `~/.hermes/bin/hermes-daily-digest.sh`, which runs the skill then sends Telegram HTML via `hermes send`. The smoke test now fails if delivery is skipped |
 | Digest smoke test fails | Ensure LM Studio is running (`lms server status` or `curl http://127.0.0.1:1234/v1/models`). Re-run `./deploy_local.sh` so `~/.hermes/config.yaml` has `model.provider: custom`, `model.base_url` for LM Studio, and `model.context_length` ≥ 64000. Sync stops the Hermes gateway first so a running gateway cannot revert config. If the model was loaded with a 4K default context, run `lms unload` then `lms load <model> --context-length 65536 --yes`. Check logs in `~/.hermes/logs/` |
 | `Context length exceeded (N tokens). Cannot compress further.` with small N (~6K) | LM Studio context alone does not fix this — Hermes uses `~/.hermes/config.yaml` **and** `~/.hermes/.env`. Stale Ollama in `.env` (`OPENAI_BASE_URL=http://127.0.0.1:11434/v1`) makes auxiliary/compression tasks use a ~6K window even when `config.yaml` is correct. Re-run `./deploy_local.sh` or the digest smoke test (sync overwrites both files). Set `hermes_model_context_length` to match `lms load --context-length`, then `lms unload && lms load <model> --context-length <same> --yes` |
@@ -321,7 +324,7 @@ Secrets stay in `vars.yml` (gitignored). Templates generate `~/.hermes/config.ya
 ## Project layout
 
 ```
-deploy_hermes.yml          deploy_investment.yml    deploy_news.yml    deploy_digest.yml
+deploy_hermes.yml          deploy_investment.yml    deploy_news.yml    deploy_gold.yml    deploy_digest.yml
 deploy_local.sh            deploy_all.sh            start_gateway.sh   start_gateway.yml
 test_telegram.sh           test_lmstudio_gateway.sh test_hermes_daily_digest.sh
 smoke_test_telegram.yml    smoke_test_lmstudio_gateway.yml smoke_test_hermes_daily_digest.yml

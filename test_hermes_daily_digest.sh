@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Smoke test: run the Hermes daily-morning-digest skill (news + investment
+# Smoke test: run the Hermes daily-morning-digest skill (news + investment + gold
 # combined) and verify the Telegram HTML digest is produced. Hermes sends the
 # digest to Telegram recipients configured in vars.yml (TELEGRAM_SEND_USERS).
 #
@@ -34,7 +34,7 @@ if ! command -v ansible-playbook >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> Hermes daily digest smoke test (news + investment -> Telegram)"
+echo "==> Hermes daily digest smoke test (news + investment + gold -> Telegram)"
 echo "==> Ansible polls every 30s for up to ${SMOKE_TEST_TIMEOUT}s — long runs are normal."
 echo "==> This runs hermes-daily-digest.sh (skill + Telegram delivery) — it may take several minutes."
 echo

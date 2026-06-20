@@ -1,0 +1,113 @@
+---
+- name: Deploy Hermes Gold Trend Tracker (7-Day Outlook)
+  hosts: all
+  gather_facts: true
+  become: false
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Establish operational workspace path variables
+      import_tasks: tasks/establish_target_home.yml
+
+    - name: Set deployment user for file ownership
+      set_fact:
+        target_user: "{{ hermes_user if (ansible_facts['os_family'] == 'Debian') else (ansible_facts['env']['USER'] | default(ansible_user_id)) }}"
+
+    - name: Resolve Hermes CLI path
+      import_tasks: tasks/resolve_hermes_cmd.yml
+
+    - name: Create dedicated Gold Trend outputs directory
+      file:
+        path: "{{ target_home }}/.hermes/workspace/gold"
+        state: directory
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        mode: '0755'
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+
+    - name: Template active gold instruments file into the workspace
+      copy:
+        dest: "{{ target_home }}/.hermes/workspace/gold/watchlist.txt"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        mode: '0644'
+        content: |
+          # Gold instruments managed by Ansible
+          {% for instrument in tracked_gold_instruments %}
+          {{ instrument }}
+          {% endfor %}
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+
+    - name: Remove legacy flat gold trend skill files (Hermes resolves skill-name/SKILL.md only)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ target_home }}/.hermes/skills/gold_trend.md"
+        - "{{ target_home }}/.hermes/skills/gold-trend-tracker.md"
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+
+    - name: Create gold-trend-tracker skill directory
+      file:
+        path: "{{ target_home }}/.hermes/skills/gold-trend-tracker"
+        state: directory
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        mode: '0755'
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+
+    - name: Create and inject Hermes Gold Trend Tracker Skill
+      copy:
+        dest: "{{ target_home }}/.hermes/skills/gold-trend-tracker/SKILL.md"
+        owner: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        group: "{{ hermes_user if ansible_facts['os_family'] == 'Debian' else omit }}"
+        mode: '0644'
+        content: |
+          ---
+          name: gold-trend-tracker
+          description: Uses Firecrawl to analyze gold price trends and produce a 7-day outlook report.
+          version: 1.0.0
+          ---
+
+          ## Objectives
+          You are a Commodities Analyst focused on gold. Your job is to gather gold market data from the past 7 days, identify key drivers (USD strength, real yields, central-bank demand, geopolitical risk), and produce a **7-day forward outlook** for gold prices.
+
+          ## Operational Procedure
+          1. Read the list of gold instruments and benchmarks in `{{ target_home }}/.hermes/workspace/gold/watchlist.txt` (e.g. GLD, IAU, spot gold).
+          2. For each instrument or benchmark:
+             - Call the **Firecrawl Web Scraping tool** to fetch price history, recent news, and analyst commentary spanning the **last 7 days**.
+             - Prioritize reputable financial sources (Kitco, Bloomberg, Reuters, major ETF issuer pages).
+          3. Synthesize the data into a concise analysis covering:
+             - **7-Day Price Trend** — direction, magnitude, and volatility
+             - **Key Drivers** — USD, Fed/rates, inflation data, safe-haven flows
+             - **7-Day Outlook** — bullish / neutral / bearish with confidence level and price range estimate
+          4. Format the final output in clean Markdown tables and narrative sections. Save to `{{ target_home }}/.hermes/workspace/gold/report.md`.
+          5. Do **not** send Telegram messages. The daily-morning-digest skill merges this report into the combined morning briefing.
+      become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
+
+    - name: Sync Hermes config, secrets, and runtime wrapper
+      import_tasks: tasks/sync_hermes_config.yml
+
+    - name: Configure 5:30 AM Gold Trend Cron Automation (Linux / WSL2)
+      cron:
+        name: "Run Morning Hermes Gold Trend 7-Day Outlook"
+        minute: "30"
+        hour: "5"
+        user: "{{ hermes_user }}"
+        job: "{{ target_home }}/.hermes/bin/hermes-run.sh chat -Q -q 'Run the gold-trend-tracker skill according to its instructions.' --skills gold-trend-tracker --yolo"
+      when: ansible_facts['os_family'] == 'Debian'
+      become: true
+
+    - name: Configure 5:30 AM Gold Trend LaunchAgent (macOS)
+      template:
+        src: "{{ playbook_dir }}/templates/com.hermes.gold.plist.j2"
+        dest: "{{ target_home }}/Library/LaunchAgents/com.hermes.gold.plist"
+        mode: '0644'
+      when: ansible_facts['os_family'] == 'Darwin'
+
+    - name: Load 5:30 AM Gold Trend LaunchAgent (macOS)
+      shell: launchctl load -w "{{ target_home }}/Library/LaunchAgents/com.hermes.gold.plist"
+      when: ansible_facts['os_family'] == 'Darwin'
+      become: false
+      failed_when: false

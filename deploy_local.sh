@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Deploy all Hermes Agent playbooks to this machine (localhost only).
-# Order: deploy_hermes.yml -> deploy_investment.yml -> deploy_news.yml -> deploy_digest.yml
+# Order: deploy_hermes.yml -> deploy_investment.yml -> deploy_news.yml -> deploy_gold.yml -> deploy_digest.yml
 #
 # Usage:
 #   ./deploy_local.sh
@@ -60,6 +60,7 @@ PLAYBOOKS=(
   "deploy_hermes.yml"
   "deploy_investment.yml"
   "deploy_news.yml"
+  "deploy_gold.yml"
   "deploy_digest.yml"
 )
 

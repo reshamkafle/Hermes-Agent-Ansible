@@ -65,3 +65,9 @@ tracked_stocks:
   - "QQQM"
   - "SCHD"
   - "SMH"
+
+# --- Gold Trend Tracker Instruments ---
+tracked_gold_instruments:
+  - "GLD"
+  - "IAU"
+  - "XAUUSD"

@@ -1,5 +1,5 @@
 ---
-- name: Deploy Hermes Daily Morning Digest (News + Investment Telegram HTML)
+- name: Deploy Hermes Daily Morning Digest (News + Investment + Gold Trend Telegram HTML)
   hosts: all
   gather_facts: true
   become: false
@@ -53,18 +53,19 @@
         content: |
           ---
           name: daily-morning-digest
-          description: Combines tech news and investment reports into a Telegram HTML briefing for telegram_send_users.
-          version: 1.0.0
+          description: Combines tech news, investment, and gold trend reports into a Telegram HTML briefing for telegram_send_users.
+          version: 1.1.0
           ---
 
           ## Objectives
-          You are a Daily Briefing Publisher. Every morning at 6 AM, merge the latest IT/AI news digest and investment analytics into one Telegram HTML message for the recipients configured in `TELEGRAM_SEND_USERS`.
+          You are a Daily Briefing Publisher. Every morning at 6 AM, merge the latest IT/AI news digest, investment analytics, and gold 7-day trend outlook into one Telegram HTML message for the recipients configured in `TELEGRAM_SEND_USERS`.
 
           ## Operational Procedure
           1. Read the cached tech news report from `{{ target_home }}/.hermes/workspace/tech_news_report.md`.
           2. Read the cached investment report from `{{ target_home }}/.hermes/workspace/investment/report.md`.
-          3. If either file is missing or empty, run the corresponding skill first (`tech-news-intelligence` or `stock-investment-tracker`), then re-read the file.
-          4. Build a **Telegram HTML message fragment** (not a full HTML5 document). Use **only** tags supported by the Telegram Bot API `parse_mode=HTML`:
+          3. Read the cached gold trend report from `{{ target_home }}/.hermes/workspace/gold/report.md`.
+          4. If any file is missing or empty, run the corresponding skill first (`tech-news-intelligence`, `stock-investment-tracker`, or `gold-trend-tracker`), then re-read the file.
+          5. Build a **Telegram HTML message fragment** (not a full HTML5 document). Use **only** tags supported by the Telegram Bot API `parse_mode=HTML`:
              - `<b>` or `<strong>` — bold section headings
              - `<i>` or `<em>` — emphasis
              - `<u>` or `<ins>` — underline
@@ -80,8 +81,9 @@
              - `<b>Hermes Daily Briefing</b>` with today's date on the next line
              - `<b>Tech &amp; AI Intelligence</b>` — convert news markdown to Telegram HTML (bold headlines, linked sources, blockquotes for key quotes)
              - `<b>Investment Tracker</b>` — reformat investment markdown tables as fixed-width text inside a `<pre>` block
-          5. Save the final Telegram HTML to `{{ target_home }}/.hermes/workspace/digest/daily_digest.html`.
-          6. Do **not** call `send_message` or attempt Telegram delivery. The deployment runner (`hermes-daily-digest.sh`) sends the saved HTML to `TELEGRAM_SEND_USERS` after this skill completes.
+             - `<b>Gold Trend (7-Day Outlook)</b>` — reformat gold trend markdown (price trend, key drivers, forward outlook) as fixed-width text inside a `<pre>` block
+          6. Save the final Telegram HTML to `{{ target_home }}/.hermes/workspace/digest/daily_digest.html`.
+          7. Do **not** call `send_message` or attempt Telegram delivery. The deployment runner (`hermes-daily-digest.sh`) sends the saved HTML to `TELEGRAM_SEND_USERS` after this skill completes.
       become: "{{ 'yes' if (ansible_facts['os_family'] == 'Debian') else 'no' }}"
 
     - name: Sync Hermes config, secrets, and runtime wrapper
@@ -97,7 +99,7 @@
 
     - name: Configure 6 AM Daily Digest Cron Automation (Linux / WSL2)
       cron:
-        name: "Run Daily Morning Hermes Digest (News + Investment Telegram HTML)"
+        name: "Run Daily Morning Hermes Digest (News + Investment + Gold Telegram HTML)"
         minute: "0"
         hour: "6"
         user: "{{ hermes_user }}"

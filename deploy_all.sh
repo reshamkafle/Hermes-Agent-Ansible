@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Deploy all Hermes Agent playbooks to remote hosts only.
-# Order: deploy_hermes.yml -> deploy_investment.yml -> deploy_news.yml -> deploy_digest.yml
+# Order: deploy_hermes.yml -> deploy_investment.yml -> deploy_news.yml -> deploy_gold.yml -> deploy_digest.yml
 #
 # Usage:
 #   ./deploy_all.sh
@@ -34,6 +34,7 @@ PLAYBOOKS=(
   "deploy_hermes.yml"
   "deploy_investment.yml"
   "deploy_news.yml"
+  "deploy_gold.yml"
   "deploy_digest.yml"
 )
 
