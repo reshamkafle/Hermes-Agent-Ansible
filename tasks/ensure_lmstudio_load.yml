@@ -80,12 +80,35 @@
       lms load attempts (in order): {{ lmstudio_load_attempts | default([]) | join(' → ') }}
   when: not (lmstudio_skip_load_due_to_memory | default(false) | bool)
 
+- name: Resolve Hermes context length for LM Studio load
+  set_fact:
+    lmstudio_load_context_length: "{{ hermes_model_context_length | default(65536) | int }}"
+
+- name: Require Hermes context length minimum for load
+  fail:
+    msg: >-
+      hermes_model_context_length={{ lmstudio_load_context_length }} is below Hermes minimum 64000.
+      Set hermes_model_context_length to at least 65536 in vars.yml.
+  when:
+    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
+    - lmstudio_load_context_length | int < 64000
+
+- name: Warn when context length may exceed LM Studio model limits
+  debug:
+    msg: >-
+      hermes_model_context_length={{ lmstudio_load_context_length }} is very large.
+      `lms load` often rejects values above 131072 instantly on 12B GGUF models.
+      If load fails in under a few seconds, try 65536 in vars.yml (see vars.example..yml).
+  when:
+    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
+    - lmstudio_load_context_length | int > 131072
+
 - name: Load LM Studio model into memory (macOS, vars.yml key only)
   shell: |
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
-    CTX="{{ hermes_model_context_length | default(65536) }}"
+    CTX="{{ lmstudio_load_context_length }}"
     KEY="{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
     : > "$LOG"
     echo "==> lms load $KEY --context-length $CTX --yes" >> "$LOG"
@@ -102,6 +125,7 @@
   async: "{{ lmstudio_load_async_seconds | default(3600) }}"
   poll: "{{ lmstudio_load_poll_interval | default(30) }}"
   register: lms_load_macos
+  ignore_errors: true
   when:
     - ansible_facts['os_family'] != 'Debian'
     - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
@@ -112,7 +136,7 @@
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
-    CTX="{{ hermes_model_context_length | default(65536) }}"
+    CTX="{{ lmstudio_load_context_length }}"
     KEY="{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
     : > "$LOG"
     echo "==> lms load $KEY --context-length $CTX --yes" >> "$LOG"
@@ -129,6 +153,7 @@
   async: "{{ lmstudio_load_async_seconds | default(3600) }}"
   poll: "{{ lmstudio_load_poll_interval | default(30) }}"
   register: lms_load_linux
+  ignore_errors: true
   when:
     - ansible_facts['os_family'] == 'Debian'
     - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
@@ -199,6 +224,8 @@
       {% endif %}
       Load command exit code:
       {{ lms_load_macos.rc | default(lms_load_linux.rc | default('n/a')) }}.
+      context_length={{ lmstudio_load_context_length | default(hermes_model_context_length | default(65536)) }}
+      (if load failed in under a few seconds, lower hermes_model_context_length — try 65536).
       Full log: {{ target_home }}/.hermes/logs/lms-load.log
       Last `lms ps --json`: {{ lms_ps_after_load_debug | default('(none)') }}
       Re-run: ./deploy_local.sh
