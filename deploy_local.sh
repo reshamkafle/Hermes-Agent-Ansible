@@ -108,7 +108,8 @@ for playbook in "${PLAYBOOKS[@]}"; do
     echo "Error: $playbook failed."
     lms_log="${HOME}/.hermes/logs/lms-get.log"
     lms_load_log="${HOME}/.hermes/logs/lms-load.log"
-    if [[ -f "$lms_load_log" ]]; then
+    # Only show lms-load.log when deploy_hermes failed — other playbooks reuse a stale log from an earlier run.
+    if [[ "$playbook" == "deploy_hermes.yml" && -f "$lms_load_log" ]]; then
       echo "LM Studio load log: $lms_load_log"
       echo "Last 20 lines:"
       tail -n 20 "$lms_load_log"

@@ -118,56 +118,23 @@
     lmstudio_log_confirms_download: false
   when: lms_get_log_tail is not defined
 
-- name: Assemble LM Studio match needle list
+- name: Assemble LM Studio match needle list (vars.yml model only)
   set_fact:
     lmstudio_match_needles: >-
       {{
         (
-          (
-            [lmstudio_effective_model, lmstudio_model_quant_tag, lmstudio_log_load_key, lmstudio_log_disk_hint]
-            if (lmstudio_strict_model_key | default(false) | bool)
-            else [
-              lmstudio_effective_model,
-              lmstudio_model_base_id,
-              lmstudio_model_slug,
-              lmstudio_model_slug_no_quant,
-              lmstudio_model_quant_tag,
-              lmstudio_log_load_key,
-              lmstudio_log_disk_hint
-            ]
-          )
-          | map('string')
-          | map('trim')
-          | reject('equalto', '')
-          | map('lower')
-          | map('regex_replace', ':.*$', '')
-          | unique
-          | list
-        )
-      }}
-
-- name: Extend LM Studio match needles with strict load candidates only
-  set_fact:
-    lmstudio_match_needles: >-
-      {{
-        (
-          lmstudio_match_needles | default([])
+          [lmstudio_effective_model]
           + (
-            lmstudio_load_candidates | default([])
-            | map('string')
-            | map('trim')
-            | reject('equalto', '')
-            | select('match', '.*@.*', ignorecase=true)
-            | list
-          )
-          + (
-            lmstudio_load_candidates | default([])
-            | map('string')
-            | map('trim')
-            | reject('equalto', '')
-            | select('search', (lmstudio_model_quant_tag | default('')), ignorecase=true)
-            | list
+            [lmstudio_model_quant_tag]
             if (lmstudio_model_quant_tag | default('') | trim | length > 0)
+            else []
+          )
+          + (
+            [lmstudio_log_load_key]
+            if (
+              (lmstudio_log_load_key | default('') | trim | length > 0)
+              and (lmstudio_log_load_key | lower == lmstudio_effective_model | lower)
+            )
             else []
           )
         )
@@ -178,22 +145,3 @@
         | unique
         | list
       }}
-  when:
-    - lmstudio_load_candidates | default([]) | length > 0
-    - lmstudio_strict_model_key | default(false) | bool
-
-- name: Extend LM Studio match needles with resolved load candidates
-  set_fact:
-    lmstudio_match_needles: >-
-      {{
-        (lmstudio_match_needles | default([]) + (lmstudio_load_candidates | default([])))
-        | map('string')
-        | map('trim')
-        | reject('equalto', '')
-        | map('lower')
-        | unique
-        | list
-      }}
-  when:
-    - lmstudio_load_candidates | default([]) | length > 0
-    - not (lmstudio_strict_model_key | default(false) | bool)

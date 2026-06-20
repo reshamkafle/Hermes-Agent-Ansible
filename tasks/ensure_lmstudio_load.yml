@@ -1,8 +1,8 @@
 ---
 # Load the configured LM Studio model into memory when not already loaded.
+# Only runs `lms load` for lmstudio_effective_model from vars.yml — no disk-path fallbacks.
 # Requires: lmstudio_home, lmstudio_lms_cmd, target_home, target_user, hermes_path_prefix,
-#           lmstudio_model_base_id, lmstudio_disk_model_key, lmstudio_load_candidates,
-#           hermes_model_api_key
+#           lmstudio_effective_model, hermes_model_api_key
 # Sets: lmstudio_model_loaded
 
 - name: Define LM Studio CLI environment (model load)
@@ -53,10 +53,8 @@
 - name: Show LM Studio model load plan
   debug:
     msg: >-
-      lms load candidates (in order): {{ lmstudio_load_candidates | default([]) | join(' → ') }} |
-      context_length: {{ hermes_model_context_length | default(65536) }} |
-      disk paths: {{ lms_disk_model_paths | default([]) | join(', ') }} |
-      match needles: {{ lmstudio_match_needles | join(', ') }}
+      lms load (vars.yml only): {{ lmstudio_effective_model }} |
+      context_length: {{ hermes_model_context_length | default(65536) }}
 
 - name: Note configured model already loaded in memory
   debug:
@@ -66,66 +64,11 @@
       Configured model: {{ lmstudio_effective_model }}.
   when: lmstudio_skip_load_due_to_memory | default(false) | bool
 
-- name: Build ordered LM Studio load candidate list (strict staff pick key)
+- name: Build LM Studio load command (vars.yml model only)
   set_fact:
     lmstudio_load_attempts:
       - "{{ lmstudio_effective_model }}"
-  when:
-    - lmstudio_strict_model_key | default(false) | bool
-    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
-
-- name: Build ordered LM Studio load candidate list (GGUF — vars.yml key only)
-  set_fact:
-    lmstudio_load_attempts:
-      - "{{ lmstudio_effective_model }}"
-  when:
-    - not (lmstudio_strict_model_key | default(false) | bool)
-    - lmstudio_prefers_gguf | default(false) | bool
-    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
-
-- name: Build ordered LM Studio load candidate list (non-GGUF)
-  set_fact:
-    lmstudio_load_attempts_raw: >-
-      {{
-        (
-          [lmstudio_effective_model]
-          + (lmstudio_load_candidates | default([]))
-          + (
-            [lmstudio_disk_model_key]
-            if (lmstudio_disk_model_key | default('') | trim | length > 0)
-            else []
-          )
-          + [lmstudio_model_base_id]
-        )
-        | map('string')
-        | map('trim')
-        | reject('equalto', '')
-        | unique
-        | list
-      }}
-  when:
-    - not (lmstudio_strict_model_key | default(false) | bool)
-    - not (lmstudio_prefers_gguf | default(false) | bool)
-    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
-
-- name: Filter MLX keys from non-GGUF load candidate list
-  include_tasks: filter_lmstudio_mlx_keys.yml
-  vars:
-    lmstudio_keys_to_filter: "{{ lmstudio_load_attempts_raw | default([]) }}"
-  when:
-    - not (lmstudio_strict_model_key | default(false) | bool)
-    - not (lmstudio_prefers_gguf | default(false) | bool)
-    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
-    - lmstudio_load_attempts_raw is defined
-
-- name: Use filtered non-GGUF LM Studio load candidate list
-  set_fact:
-    lmstudio_load_attempts: "{{ lmstudio_filtered_keys | default(lmstudio_load_attempts_raw | default([])) }}"
-  when:
-    - not (lmstudio_strict_model_key | default(false) | bool)
-    - not (lmstudio_prefers_gguf | default(false) | bool)
-    - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
-    - lmstudio_load_attempts is not defined
+  when: not (lmstudio_skip_load_due_to_memory | default(false) | bool)
 
 - name: Show LM Studio load attempts
   debug:
@@ -133,26 +76,20 @@
       lms load attempts (in order): {{ lmstudio_load_attempts | default([]) | join(' → ') }}
   when: not (lmstudio_skip_load_due_to_memory | default(false) | bool)
 
-- name: Load LM Studio model into memory (macOS, try each candidate path/key)
+- name: Load LM Studio model into memory (macOS, vars.yml key only)
   shell: |
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
     CTX="{{ hermes_model_context_length | default(65536) }}"
+    KEY="{{ lmstudio_effective_model }}"
     : > "$LOG"
-    load_one() {
-      local key="$1"
-      echo "==> lms load $key --context-length $CTX --yes" >> "$LOG"
-      if "$LMS" load "$key" --context-length "$CTX" --yes >> "$LOG" 2>&1; then
-        echo "==> loaded: $key (context_length=$CTX)" >> "$LOG"
-        return 0
-      fi
-      echo "==> load failed for: $key" >> "$LOG"
-      return 1
-    }
-    {% for key in lmstudio_load_attempts | default([]) %}
-    if load_one {{ key | quote }}; then exit 0; fi
-    {% endfor %}
+    echo "==> lms load $KEY --context-length $CTX --yes" >> "$LOG"
+    if "$LMS" load "$KEY" --context-length "$CTX" --yes >> "$LOG" 2>&1; then
+      echo "==> loaded: $KEY (context_length=$CTX)" >> "$LOG"
+      exit 0
+    fi
+    echo "==> load failed for: $KEY" >> "$LOG"
     echo "==> all load candidates failed" >> "$LOG"
     exit 1
   args:
@@ -166,26 +103,20 @@
     - not (lmstudio_skip_load_due_to_memory | default(false) | bool)
   become: false
 
-- name: Load LM Studio model into memory (Linux / WSL2, try each candidate path/key)
+- name: Load LM Studio model into memory (Linux / WSL2, vars.yml key only)
   shell: |
     set -o pipefail
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
     CTX="{{ hermes_model_context_length | default(65536) }}"
+    KEY="{{ lmstudio_effective_model }}"
     : > "$LOG"
-    load_one() {
-      local key="$1"
-      echo "==> lms load $key --context-length $CTX --yes" >> "$LOG"
-      if "$LMS" load "$key" --context-length "$CTX" --yes >> "$LOG" 2>&1; then
-        echo "==> loaded: $key (context_length=$CTX)" >> "$LOG"
-        return 0
-      fi
-      echo "==> load failed for: $key" >> "$LOG"
-      return 1
-    }
-    {% for key in lmstudio_load_attempts | default([]) %}
-    if load_one {{ key | quote }}; then exit 0; fi
-    {% endfor %}
+    echo "==> lms load $KEY --context-length $CTX --yes" >> "$LOG"
+    if "$LMS" load "$KEY" --context-length "$CTX" --yes >> "$LOG" 2>&1; then
+      echo "==> loaded: $KEY (context_length=$CTX)" >> "$LOG"
+      exit 0
+    fi
+    echo "==> load failed for: $KEY" >> "$LOG"
     echo "==> all load candidates failed" >> "$LOG"
     exit 1
   args:
@@ -254,13 +185,12 @@
 - name: Require LM Studio model load to succeed
   fail:
     msg: >-
-      `lms load` failed for all candidate paths/keys:
-      {{ lmstudio_load_attempts | default(lmstudio_load_candidates | default([])) | join(', ') }}.
-      Disk paths from `lms ls`: {{ lms_disk_model_paths | default([]) | join(', ') | default('(none)') }}.
+      `lms load` failed for {{ lmstudio_effective_model }} (the only key from vars.yml).
       {% if lmstudio_prefers_gguf | default(false) | bool %}
-      vars.yml targets GGUF ({{ lmstudio_effective_model }}). MLX models on disk are ignored.
-      Download GGUF if missing:
+      vars.yml targets GGUF ({{ lmstudio_effective_model }}). Ansible only runs `lms load` for that key — MLX names in the log usually mean LM Studio resolved the staff pick to a gemma4/MLX variant on disk, not that Ansible tried MLX paths.
+      If you see gemma4_unified / gemma-4-12b-it-mlx: remove MLX copies (`lms ls`, delete -mlx entries) and download GGUF:
       {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
+      Then load: {{ lmstudio_lms_cmd }} load {{ lmstudio_effective_model }} --context-length {{ hermes_model_context_length | default(65536) }} --yes
       {% endif %}
       Load command exit code:
       {{ lms_load_macos.rc | default(lms_load_linux.rc | default('n/a')) }}.

@@ -32,10 +32,21 @@
       {{
         (lmstudio_runtime_model.split('@')[1] | lower)
         if ('@' in (lmstudio_runtime_model | default('')))
-        else ''
+        else (
+          'q4_k_m'
+          if (lmstudio_runtime_model | lower is search('q4_k_m'))
+          else (
+            'q8_0'
+            if (lmstudio_runtime_model | lower is search('q8_0'))
+            else ''
+          )
+        )
       }}
     lmstudio_strict_model_key: >-
-      {{ ('@' in (lmstudio_runtime_model | default(''))) | bool }}
+      {{
+        ('@' in (lmstudio_runtime_model | default('')))
+        or ('.gguf' in (lmstudio_runtime_model | default('') | lower))
+      }}
 
 # Set lmstudio_model_download_url to a full https://huggingface.co/... URL for `lms get`.
 # Passing org/repo or staff picks alone can hit LM Studio's artifact resolver and mis-resolve.
@@ -84,6 +95,7 @@
   when:
     - lmstudio_prefers_gguf | default(false) | bool
     - not (lmstudio_strict_model_key | default(false) | bool)
+    - not ('.gguf' in (lmstudio_effective_model | default('') | lower))
 
 - name: Show LM Studio model download plan
   debug:

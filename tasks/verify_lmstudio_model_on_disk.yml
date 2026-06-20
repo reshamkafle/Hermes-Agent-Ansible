@@ -72,9 +72,7 @@
     msg: >-
       `lms ls` rc={{ lms_ls_raw.rc | default('?') }} |
       on disk={{ lmstudio_model_on_disk | default(false) }} |
-      primary key={{ lmstudio_disk_model_key | default('(none)') }} |
-      disk paths={{ lms_disk_model_paths | default([]) | join(', ') }} |
-      load candidates={{ lmstudio_load_candidates | default([]) | join(', ') }}
+      vars.yml model={{ lmstudio_effective_model | default('(unset)') }}
 
 - name: Read LM Studio download log before verify failure
   include_tasks: read_lmstudio_get_log_tail.yml
