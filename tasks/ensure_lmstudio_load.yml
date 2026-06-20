@@ -50,10 +50,14 @@
   include_tasks: build_lmstudio_match_needles.yml
   when: not (lmstudio_skip_load_due_to_memory | default(false) | bool)
 
+- name: Resolve exact LM Studio load key from disk listing
+  include_tasks: resolve_lmstudio_load_key.yml
+  when: not (lmstudio_skip_load_due_to_memory | default(false) | bool)
+
 - name: Show LM Studio model load plan
   debug:
     msg: >-
-      lms load (vars.yml only): {{ lmstudio_effective_model }} |
+      lms load key={{ lmstudio_runtime_model | default(lmstudio_effective_model) }} |
       context_length: {{ hermes_model_context_length | default(65536) }}
 
 - name: Note configured model already loaded in memory
@@ -64,10 +68,10 @@
       Configured model: {{ lmstudio_effective_model }}.
   when: lmstudio_skip_load_due_to_memory | default(false) | bool
 
-- name: Build LM Studio load command (vars.yml model only)
+- name: Build LM Studio load command (resolved key from vars.yml + disk)
   set_fact:
     lmstudio_load_attempts:
-      - "{{ lmstudio_effective_model }}"
+      - "{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
   when: not (lmstudio_skip_load_due_to_memory | default(false) | bool)
 
 - name: Show LM Studio load attempts
@@ -82,7 +86,7 @@
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
     CTX="{{ hermes_model_context_length | default(65536) }}"
-    KEY="{{ lmstudio_effective_model }}"
+    KEY="{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
     : > "$LOG"
     echo "==> lms load $KEY --context-length $CTX --yes" >> "$LOG"
     if "$LMS" load "$KEY" --context-length "$CTX" --yes >> "$LOG" 2>&1; then
@@ -109,7 +113,7 @@
     LOG="{{ target_home }}/.hermes/logs/lms-load.log"
     LMS="{{ lmstudio_lms_cmd }}"
     CTX="{{ hermes_model_context_length | default(65536) }}"
-    KEY="{{ lmstudio_effective_model }}"
+    KEY="{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
     : > "$LOG"
     echo "==> lms load $KEY --context-length $CTX --yes" >> "$LOG"
     if "$LMS" load "$KEY" --context-length "$CTX" --yes >> "$LOG" 2>&1; then
@@ -185,7 +189,8 @@
 - name: Require LM Studio model load to succeed
   fail:
     msg: >-
-      `lms load` failed for {{ lmstudio_effective_model }} (the only key from vars.yml).
+      `lms load` failed for {{ lmstudio_runtime_model | default(lmstudio_effective_model) }}
+      (vars.yml: {{ lmstudio_effective_model }}).
       {% if lmstudio_prefers_gguf | default(false) | bool %}
       vars.yml targets GGUF ({{ lmstudio_effective_model }}). Ansible only runs `lms load` for that key — MLX names in the log usually mean LM Studio resolved the staff pick to a gemma4/MLX variant on disk, not that Ansible tried MLX paths.
       If you see gemma4_unified / gemma-4-12b-it-mlx: remove MLX copies (`lms ls`, delete -mlx entries) and download GGUF:

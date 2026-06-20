@@ -120,6 +120,7 @@
       {{
         (kl == required)
         or (kl | regex_replace('[-_]', '') == required | regex_replace('[-_]', ''))
+        or (kl.split('/')[-1] | lower == required)
         or (
           quant
           and (quant in kl or quant_norm in (kl | regex_replace('[-_]', '')))

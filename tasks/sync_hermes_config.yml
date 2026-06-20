@@ -32,6 +32,18 @@
 - name: Resolve LM Studio model identifiers for Hermes config
   import_tasks: resolve_lmstudio_model.yml
 
+- name: Define LM Studio CLI environment (Hermes config sync)
+  import_tasks: lmstudio_cli_environment.yml
+
+- name: Build LM Studio model match needles for config sync
+  include_tasks: build_lmstudio_match_needles.yml
+
+- name: List LM Studio models on disk (for load key resolution)
+  include_tasks: lmstudio_check_disk_once.yml
+
+- name: Resolve LM Studio load key for Hermes model.default
+  include_tasks: resolve_lmstudio_load_key.yml
+
 - name: Ensure Hermes home directory exists before config write
   file:
     path: "{{ hermes_home_dir }}"
@@ -70,7 +82,7 @@
   shell: |
     set -euo pipefail
     H="{{ hermes_cmd }}"
-    "$H" config set model.default "{{ lmstudio_effective_model }}"
+    "$H" config set model.default "{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
     "$H" config set model.provider "{{ hermes_model_provider | default('custom') }}"
     "$H" config set model.base_url "{{ lmstudio_base_url }}"
     "$H" config set model.api_key "{{ hermes_model_api_key | default('lm-studio', true) }}"
@@ -118,7 +130,7 @@
     hermes_model_ctx: "{{ hermes_model_section.context_length | default(0) | int }}"
     hermes_compression_ctx: "{{ hermes_compression_section.context_length | default(0) | int }}"
     hermes_expected_ctx: "{{ hermes_model_context_length | default(65536) | int }}"
-    hermes_expected_model: "{{ lmstudio_effective_model }}"
+    hermes_expected_model: "{{ lmstudio_runtime_model | default(lmstudio_effective_model) }}"
     hermes_expected_base_url: "{{ lmstudio_base_url }}"
   assert:
     that:

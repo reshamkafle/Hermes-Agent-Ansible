@@ -1,0 +1,75 @@
+---
+# Map vars.yml model to the exact `lms load` key from `lms ls`.
+# When vars.yml is a GGUF filename (no path), find the matching disk path/key.
+# Requires: lmstudio_effective_model, lms_disk_model_keys, lms_disk_model_paths
+# Sets: lmstudio_runtime_model, lmstudio_load_key_resolved
+
+- name: Resolve LM Studio load key from vars.yml and disk listing
+  set_fact:
+    lmstudio_runtime_model: >-
+      {%- set wanted = lmstudio_effective_model | default('') | string | trim -%}
+      {%- set wanted_l = wanted | lower -%}
+      {%- set keys = lms_disk_model_keys | default([]) | map('string') | list -%}
+      {%- set paths = lms_disk_model_paths | default([]) | map('string') | list -%}
+      {%- set ns = namespace(resolved='') -%}
+      {%- for k in keys -%}
+        {%- if k | lower == wanted_l -%}
+          {%- set ns.resolved = k -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- if ns.resolved | length == 0 -%}
+        {%- for candidate in (paths + keys) | unique | list -%}
+          {%- set cl = candidate | lower -%}
+          {%- set base = cl.split('/')[-1] -%}
+          {%- if cl == wanted_l or base == wanted_l -%}
+            {%- if ns.resolved | length == 0 or candidate in paths -%}
+              {%- set ns.resolved = candidate -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endif -%}
+      {{ ns.resolved if (ns.resolved | length > 0) else wanted }}
+    lmstudio_load_key_resolved: >-
+      {%- set wanted = lmstudio_effective_model | default('') | string | trim -%}
+      {%- set wanted_l = wanted | lower -%}
+      {%- set keys = lms_disk_model_keys | default([]) | map('string') | list -%}
+      {%- set paths = lms_disk_model_paths | default([]) | map('string') | list -%}
+      {%- set ns = namespace(found=false) -%}
+      {%- for k in keys -%}
+        {%- if k | lower == wanted_l -%}
+          {%- set ns.found = true -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- if not ns.found -%}
+        {%- for candidate in (paths + keys) | unique | list -%}
+          {%- set cl = candidate | lower -%}
+          {%- set base = cl.split('/')[-1] -%}
+          {%- if cl == wanted_l or base == wanted_l -%}
+            {%- set ns.found = true -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endif -%}
+      {{ ns.found | bool }}
+
+- name: Show resolved LM Studio load key
+  debug:
+    msg: >-
+      vars.yml model={{ lmstudio_effective_model }} |
+      lms load / Hermes key={{ lmstudio_runtime_model }}
+      {% if lmstudio_runtime_model != lmstudio_effective_model %}
+      (resolved from `lms ls` disk listing)
+      {% endif %}
+
+- name: Fail when GGUF filename in vars.yml was not found on disk
+  fail:
+    msg: >-
+      No model on disk matching "{{ lmstudio_effective_model }}".
+      LM Studio cannot load a bare filename — it needs the full path or catalog key from `lms ls`.
+      Run: lms ls
+      Then set lmstudio_model in vars.yml to the exact key shown (often a full path ending in
+      gemma-4-12B-it-Q4_K_M.gguf), or use the staff pick if listed: google/gemma-4-12b@q4_k_m
+      GGUF paths on disk (MLX filtered): {{ lms_disk_model_paths | default([]) | join(', ') | default('(none)') }}
+  when:
+    - lmstudio_effective_model | default('') | lower is search('\\.gguf$')
+    - '/' not in lmstudio_effective_model
+    - not (lmstudio_load_key_resolved | default(false) | bool)

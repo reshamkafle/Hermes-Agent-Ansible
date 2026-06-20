@@ -21,31 +21,31 @@
     - lmstudio_model | default('') | trim | length == 0
 
 - name: Resolve OS-specific LM Studio model identifier from vars.yml
+  vars:
+    lmstudio_vars_model: >-
+      {{ lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model }}
   set_fact:
-    lmstudio_effective_model: >-
-      {{ lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model }}
-    lmstudio_model_base_id: >-
-      {{ (lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model).split('@')[0] }}
-    lmstudio_runtime_model: >-
-      {{ lmstudio_model_linux if (ansible_facts['os_family'] == 'Debian') else lmstudio_model }}
+    lmstudio_effective_model: "{{ lmstudio_vars_model }}"
+    lmstudio_model_base_id: "{{ lmstudio_vars_model.split('@')[0] }}"
+    lmstudio_runtime_model: "{{ lmstudio_vars_model }}"
     lmstudio_model_quant_tag: >-
       {{
-        (lmstudio_runtime_model.split('@')[1] | lower)
-        if ('@' in (lmstudio_runtime_model | default('')))
+        (lmstudio_vars_model.split('@')[1] | lower)
+        if ('@' in (lmstudio_vars_model | default('')))
         else (
           'q4_k_m'
-          if (lmstudio_runtime_model | lower is search('q4_k_m'))
+          if (lmstudio_vars_model | lower is search('q4_k_m'))
           else (
             'q8_0'
-            if (lmstudio_runtime_model | lower is search('q8_0'))
+            if (lmstudio_vars_model | lower is search('q8_0'))
             else ''
           )
         )
       }}
     lmstudio_strict_model_key: >-
       {{
-        ('@' in (lmstudio_runtime_model | default('')))
-        or ('.gguf' in (lmstudio_runtime_model | default('') | lower))
+        ('@' in (lmstudio_vars_model | default('')))
+        or ('.gguf' in (lmstudio_vars_model | default('') | lower))
       }}
 
 # Set lmstudio_model_download_url to a full https://huggingface.co/... URL for `lms get`.
