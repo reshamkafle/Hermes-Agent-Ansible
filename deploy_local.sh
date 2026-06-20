@@ -50,10 +50,10 @@ else
   exit 1
 fi
 
-LMSTUDIO_MODEL="$("$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model "$VARS_FILE")"
-LMSTUDIO_MODEL_LINUX="$("$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model_linux "$VARS_FILE")"
-LMSTUDIO_DOWNLOAD_URL="$("$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model_download_url "$VARS_FILE")"
-HERMES_CTX="$("$SCRIPT_DIR/scripts/read_yaml_value.sh" hermes_model_context_length "$VARS_FILE")"
+LMSTUDIO_MODEL="$(bash "$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model "$VARS_FILE")"
+LMSTUDIO_MODEL_LINUX="$(bash "$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model_linux "$VARS_FILE")"
+LMSTUDIO_DOWNLOAD_URL="$(bash "$SCRIPT_DIR/scripts/read_yaml_value.sh" lmstudio_model_download_url "$VARS_FILE")"
+HERMES_CTX="$(bash "$SCRIPT_DIR/scripts/read_yaml_value.sh" hermes_model_context_length "$VARS_FILE")"
 HERMES_CTX="${HERMES_CTX:-65536}"
 if [[ "$(uname -s)" == "Linux" ]]; then
   LMSTUDIO_EFFECTIVE_MODEL="$LMSTUDIO_MODEL_LINUX"
