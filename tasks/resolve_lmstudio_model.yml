@@ -2,7 +2,7 @@
 # Resolve lmstudio_effective_model from vars.yml (no hardcoded model IDs).
 # Requires: ansible_facts['os_family']
 # Sets: lmstudio_effective_model, lmstudio_model_base_id, lmstudio_model_download_target,
-#       lmstudio_get_cli_flags, lmstudio_runtime_model
+#       lmstudio_get_cli_flags, lmstudio_runtime_model, lmstudio_prefers_gguf
 
 - name: Require LM Studio model in vars.yml (Linux)
   fail:
@@ -45,10 +45,19 @@
           )
         )
       }}
+    lmstudio_prefers_gguf: >-
+      {{
+        (ansible_facts['os_family'] == 'Debian')
+        or ('@' in (lmstudio_effective_model | default('')))
+        or ('GGUF' in (lmstudio_model_download_url | default('') | upper))
+        or ('GGUF' in (lmstudio_effective_model | upper))
+        or ('gguf' in (lmstudio_effective_model | lower))
+      }}
     lmstudio_get_cli_flags: >-
       {{
         '--gguf --yes' if (
           (ansible_facts['os_family'] == 'Debian')
+          or ('@' in (lmstudio_effective_model | default('')))
           or ('GGUF' in (lmstudio_model_download_url | default('') | upper))
           or ('GGUF' in (lmstudio_effective_model | upper))
           or ('gguf' in (lmstudio_effective_model | lower))

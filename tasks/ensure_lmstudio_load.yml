@@ -79,7 +79,16 @@
         (
           [lmstudio_effective_model]
           + (lmstudio_load_candidates | default([]))
-          + [lmstudio_disk_model_key, lmstudio_model_base_id]
+          + (
+            [lmstudio_disk_model_key]
+            if (lmstudio_disk_model_key | default('') | trim | length > 0)
+            else []
+          )
+          + (
+            [lmstudio_model_base_id]
+            if not (lmstudio_prefers_gguf | default(false) | bool)
+            else []
+          )
         )
         | map('string')
         | map('trim')
@@ -88,17 +97,15 @@
         | list
       }}
 
-- name: Drop MLX LM Studio candidates when vars.yml specifies GGUF
+- name: Drop MLX and ambiguous slug candidates when vars.yml targets GGUF
   set_fact:
     lmstudio_load_attempts: >-
       {{
         lmstudio_load_attempts_raw
-        | reject('search', '-mlx', ignorecase=true)
+        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
         | list
       }}
-  when:
-    - ('@' in (lmstudio_effective_model | default('')))
-      or ('--gguf' in (lmstudio_get_cli_flags | default('')))
+  when: lmstudio_prefers_gguf | default(false) | bool
 
 - name: Use full LM Studio load candidate list
   set_fact:
@@ -245,8 +252,13 @@
   fail:
     msg: >-
       `lms load` failed for all candidate paths/keys:
-      {{ lmstudio_load_candidates | default([]) | join(', ') }}.
+      {{ lmstudio_load_attempts | default(lmstudio_load_candidates | default([])) | join(', ') }}.
       Disk paths from `lms ls`: {{ lms_disk_model_paths | default([]) | join(', ') | default('(none)') }}.
+      {% if lmstudio_prefers_gguf | default(false) | bool %}
+      vars.yml targets GGUF ({{ lmstudio_effective_model }}). MLX models on disk are ignored.
+      Download GGUF if missing:
+      {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
+      {% endif %}
       Load command exit code:
       {{ lms_load_macos.rc | default(lms_load_linux.rc | default('n/a')) }}.
       Full log: {{ target_home }}/.hermes/logs/lms-load.log

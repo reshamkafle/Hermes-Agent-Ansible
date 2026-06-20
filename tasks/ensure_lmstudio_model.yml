@@ -103,6 +103,9 @@
       LM Studio model {{ lmstudio_model_base_id }} is not on disk after automated download.
       Command run:
       {{ lmstudio_lms_cmd }} get {{ lmstudio_model_download_target }} {{ lmstudio_get_cli_flags }}
+      {% if lmstudio_prefers_gguf | default(false) | bool %}
+      vars.yml targets GGUF ({{ lmstudio_effective_model }}). An MLX copy on disk does not count.
+      {% endif %}
       Check download log: {{ target_home }}/.hermes/logs/lms-get.log
       Models found on disk: {{ lms_disk_model_paths | default(lms_disk_model_keys | default([])) | join(', ') if ((lms_disk_model_paths | default([]) | length > 0) or (lms_disk_model_keys | default([]) | length > 0)) else '(none)' }}
       Last log lines:

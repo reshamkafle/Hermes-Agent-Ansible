@@ -62,6 +62,10 @@
         if (
           (lmstudio_log_load_key_raw | default('') | trim | length >= 4)
           and (lmstudio_log_load_key_raw | lower not in ['lms', 'load', '--yes', '-y', 'yes'])
+          and not (
+            (lmstudio_prefers_gguf | default(false) | bool)
+            and (lmstudio_log_load_key_raw | lower is search('(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)'))
+          )
         )
         else ''
       }}
@@ -74,6 +78,10 @@
         if (
           (lmstudio_log_disk_hint_raw | default('') | trim | length >= 4)
           and (lmstudio_log_disk_hint_raw | lower not in ['unknown', 'lms', 'load', '--yes', '-y', 'yes'])
+          and not (
+            (lmstudio_prefers_gguf | default(false) | bool)
+            and (lmstudio_log_disk_hint_raw | lower is search('(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)'))
+          )
         )
         else ''
       }}
@@ -83,7 +91,11 @@
     lmstudio_log_confirms_download: >-
       {{
         (lms_get_log_tail.stdout | default('') | lower)
-        is search('model already downloaded|satisfied .*\\[mlx\\]|satisfied .*\\[gguf\\]')
+        is search(
+          'model already downloaded|satisfied .*\\[gguf\\]'
+          if (lmstudio_prefers_gguf | default(false) | bool)
+          else 'model already downloaded|satisfied .*\\[mlx\\]|satisfied .*\\[gguf\\]'
+        )
       }}
   when: lms_get_log_tail is defined
 

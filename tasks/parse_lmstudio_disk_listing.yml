@@ -82,6 +82,22 @@
       {%- endfor -%}
       {{ keys | unique | list }}
 
+- name: Drop MLX disk paths when vars.yml targets GGUF
+  set_fact:
+    lms_disk_model_paths: >-
+      {{
+        lms_disk_model_paths | default([])
+        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
+        | list
+      }}
+    lms_disk_model_keys: >-
+      {{
+        lms_disk_model_keys | default([])
+        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
+        | list
+      }}
+  when: lmstudio_prefers_gguf | default(false) | bool
+
 - name: Test whether an LM Studio disk path/key matches the configured model
   set_fact:
     lmstudio_key_matches_config: >-
@@ -125,6 +141,16 @@
     lmstudio_matched_keys: []
   when: lmstudio_key_match_results is not defined
 
+- name: Drop MLX disk keys when vars.yml targets GGUF
+  set_fact:
+    lmstudio_matched_keys: >-
+      {{
+        lmstudio_matched_keys | default([])
+        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
+        | list
+      }}
+  when: lmstudio_prefers_gguf | default(false) | bool
+
 - name: Prefer matched LM Studio load paths over keys
   set_fact:
     lmstudio_matched_paths: >-
@@ -152,11 +178,17 @@
             if (lmstudio_log_confirms_download | default(false) | bool)
             else []
           )
-          + [lmstudio_model_slug_no_quant, lmstudio_model_slug, lmstudio_model_base_id]
+          + (
+            [lmstudio_model_slug_no_quant, lmstudio_model_slug, lmstudio_model_base_id]
+            if not (lmstudio_prefers_gguf | default(false) | bool)
+            else []
+          )
         )
         | map('string')
         | map('trim')
         | reject('equalto', '')
+        | reject('search', '(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)')
+        | list
         | unique
         | list
       }}
@@ -186,9 +218,16 @@
                   and (lmstudio_log_confirms_download | default(false) | bool)
                 )
                 else (
-                  lmstudio_model_slug_no_quant
-                  if (lmstudio_model_slug_no_quant | default('') | trim | length > 0)
-                  else lmstudio_model_base_id
+                  lmstudio_effective_model
+                  if (
+                    (lmstudio_prefers_gguf | default(false) | bool)
+                    and (lmstudio_effective_model | default('') | trim | length > 0)
+                  )
+                  else (
+                    lmstudio_model_slug_no_quant
+                    if (lmstudio_model_slug_no_quant | default('') | trim | length > 0)
+                    else lmstudio_model_base_id
+                  )
                 )
               )
             )
@@ -198,5 +237,14 @@
     lmstudio_model_on_disk: >-
       {{
         (lmstudio_matched_keys | default([]) | length > 0)
-        or (lmstudio_log_confirms_download | default(false) | bool)
+        or (
+          (lmstudio_log_confirms_download | default(false) | bool)
+          and not (
+            (lmstudio_prefers_gguf | default(false) | bool)
+            and (
+              (lmstudio_log_disk_hint | default('') | lower is search('(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)'))
+              or (lmstudio_log_load_key | default('') | lower is search('(?i)(-mlx|/mlx|\\[mlx\\]|_mlx)'))
+            )
+          )
+        )
       }}
