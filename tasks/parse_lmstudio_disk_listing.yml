@@ -129,6 +129,7 @@
       }}
       {%- else -%}
       {{ false }}
+      {%- endif -%}
   loop: "{{ lms_disk_model_keys | default([]) }}"
   loop_control:
     label: "{{ item }}"
