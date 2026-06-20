@@ -23,20 +23,24 @@ if [[ ! -s "${DIGEST_HTML}" ]]; then
   exit 1
 fi
 
-declare -A _seen=()
+# Collect unique Telegram recipient IDs (bash 3.2 / macOS compatible — no declare -A).
 recipients=()
+_add_recipient() {
+  local rid="${1// /}"
+  [[ -z "${rid}" ]] && return 0
+  local existing
+  for existing in "${recipients[@]}"; do
+    [[ "${existing}" == "${rid}" ]] && return 0
+  done
+  recipients+=("${rid}")
+}
+
 _raw="${TELEGRAM_SEND_USERS:-${TELEGRAM_ALLOWED_USERS:-}}"
 IFS=',' read -ra _ids <<< "${_raw}"
 for rid in "${_ids[@]}"; do
-  rid="${rid// /}"
-  [[ -z "${rid}" ]] && continue
-  [[ -n "${_seen[${rid}]+x}" ]] && continue
-  _seen["${rid}"]=1
-  recipients+=("${rid}")
+  _add_recipient "${rid}"
 done
-if [[ -n "${TELEGRAM_HOME_CHANNEL:-}" ]] && [[ -z "${_seen[${TELEGRAM_HOME_CHANNEL}]+x}" ]]; then
-  recipients+=("${TELEGRAM_HOME_CHANNEL}")
-fi
+_add_recipient "${TELEGRAM_HOME_CHANNEL:-}"
 
 if [[ -z "${recipients[*]:-}" ]]; then
   echo "error: no Telegram recipients (set TELEGRAM_SEND_USERS or TELEGRAM_ALLOWED_USERS in ${HERMES_HOME}/.env)" >&2

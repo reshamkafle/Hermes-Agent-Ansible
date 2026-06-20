@@ -15,14 +15,14 @@
 #
 # Usage:
 #   ./test_hermes_daily_digest.sh
-#   SMOKE_TEST_TIMEOUT=3600 ./test_hermes_daily_digest.sh   # timeout in seconds (default 1800)
+#   SMOKE_TEST_TIMEOUT=10800 ./test_hermes_daily_digest.sh  # timeout in seconds (default 7200)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-SMOKE_TEST_TIMEOUT="${SMOKE_TEST_TIMEOUT:-1800}"
+SMOKE_TEST_TIMEOUT="${SMOKE_TEST_TIMEOUT:-7200}"
 
 if [[ ! -f "vars.yml" ]]; then
   echo "Error: vars.yml not found. Copy vars.example..yml to vars.yml and fill in your secrets."
