@@ -23,18 +23,19 @@ if [[ ! -s "${DIGEST_HTML}" ]]; then
   exit 1
 fi
 
-# Collect unique Telegram recipient IDs (bash 3.2 + set -u / macOS compatible).
+# Collect unique Telegram recipient IDs (bash 3.2 + set -u on macOS).
 recipients=()
+recipient_count=0
 _add_recipient() {
   local rid="${1// /}"
   [[ -z "${rid}" ]] && return 0
-  local existing
-  if [[ ${#recipients} -gt 0 ]]; then
-    for existing in ${recipients+"${recipients[@]}"}; do
-      [[ "${existing}" == "${rid}" ]] && return 0
-    done
-  fi
-  recipients[${#recipients}]="${rid}"
+  local i=0
+  while [[ $i -lt $recipient_count ]]; do
+    [[ "${recipients[$i]}" == "${rid}" ]] && return 0
+    i=$((i + 1))
+  done
+  recipients[$recipient_count]="${rid}"
+  recipient_count=$((recipient_count + 1))
 }
 
 _raw="${TELEGRAM_SEND_USERS:-}"
@@ -49,19 +50,22 @@ if [[ -n "${_raw}" ]]; then
 fi
 _add_recipient "${TELEGRAM_HOME_CHANNEL:-}"
 
-if [[ ${#recipients} -eq 0 ]]; then
+if [[ $recipient_count -eq 0 ]]; then
   echo "error: no Telegram recipients (set TELEGRAM_SEND_USERS or TELEGRAM_ALLOWED_USERS in ${HERMES_HOME}/.env)" >&2
   exit 1
 fi
 
 delivered=0
-for rid in ${recipients+"${recipients[@]}"}; do
+i=0
+while [[ $i -lt $recipient_count ]]; do
+  rid="${recipients[$i]}"
   echo "==> Delivering digest to telegram:${rid}"
   "${HERMES_BIN}" send --to "telegram:${rid}" \
     --subject "Hermes Daily Briefing — full HTML report attached" \
     --file "${DIGEST_HTML}" \
     -q
   delivered=$((delivered + 1))
+  i=$((i + 1))
 done
 
 echo "==> Digest delivered to ${delivered} Telegram recipient(s)"
