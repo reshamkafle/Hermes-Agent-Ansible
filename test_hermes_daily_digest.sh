@@ -35,7 +35,7 @@ if ! command -v ansible-playbook >/dev/null 2>&1; then
 fi
 
 echo "==> Hermes daily digest smoke test (news + investment -> Telegram)"
-echo "==> Timeout: ${SMOKE_TEST_TIMEOUT}s (set SMOKE_TEST_TIMEOUT to override)"
+echo "==> Ansible polls every 30s for up to ${SMOKE_TEST_TIMEOUT}s — long runs are normal."
 echo "==> This runs hermes-daily-digest.sh (skill + Telegram delivery) — it may take several minutes."
 echo
 

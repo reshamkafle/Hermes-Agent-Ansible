@@ -191,7 +191,16 @@
         hermes_digest_smoke_timeout: "{{ smoke_test_timeout_seconds | default(7200) | int }}"
         hermes_digest_smoke_poll_interval: 30
 
-    - name: Start Hermes daily morning digest (skill + Telegram delivery via hermes send)
+    - name: Note digest smoke test may take a long time
+      debug:
+        msg: >-
+          Running daily-morning-digest (skill + Telegram delivery). This often
+          takes 45–90+ minutes on a local LLM. Ansible will poll every
+          {{ hermes_digest_smoke_poll_interval }}s for up to
+          {{ hermes_digest_smoke_timeout }}s — ignore transient poll messages
+          until the task completes or hits the timeout.
+
+    - name: Run Hermes daily morning digest (skill + Telegram delivery via hermes send)
       shell: |
         exec "{{ hermes_home_dir }}/bin/hermes-daily-digest.sh"
       args:
@@ -200,17 +209,9 @@
         HOME: "{{ target_home }}"
         HERMES_HOME: "{{ hermes_home_dir }}"
         PATH: "{{ hermes_path_prefix }}:{{ ansible_facts['env']['PATH'] }}"
-      async: "{{ hermes_digest_smoke_timeout }}"
-      poll: 0
-      register: hermes_digest_job
-
-    - name: Wait for Hermes daily morning digest to finish
-      async_status:
-        jid: "{{ hermes_digest_job.ansible_job_id }}"
       register: hermes_digest_run
-      until: hermes_digest_run.finished
-      retries: "{{ (hermes_digest_smoke_timeout // hermes_digest_smoke_poll_interval) | int }}"
-      delay: "{{ hermes_digest_smoke_poll_interval }}"
+      async: "{{ hermes_digest_smoke_timeout }}"
+      poll: "{{ hermes_digest_smoke_poll_interval }}"
       failed_when: false
 
     - name: Fail when digest run timed out
@@ -222,7 +223,7 @@
           Pre-warm caches by running the 5 AM news and midnight investment jobs once,
           then re-test. Or increase timeout:
           SMOKE_TEST_TIMEOUT=10800 ./test_hermes_daily_digest.sh
-      when: not hermes_digest_run.finished
+      when: hermes_digest_run.msg | default('') == 'Timeout exceeded'
 
     - name: Verify Hermes digest command succeeded
       assert:
